@@ -2,7 +2,8 @@
 
 A browser falling-block versus game in TypeScript. Phase 1 built the engine
 core and a single-player **40 Lines Sprint**. Phase 2 adds damage, garbage and
-**local versus**: two players on one keyboard, first to 2 rounds.
+**local versus**: two players on one keyboard, first to 2 rounds. Phase 3 adds a
+bot with 5 difficulty levels: **Versus bot** and the **Gauntlet** (beat all 5 in a row).
 
 ## Run it
 
@@ -29,6 +30,8 @@ npm run build      # production build in packages/web/dist
 | Hold | C or Shift |
 | Restart / menu | R / Esc |
 
+Versus bot and the gauntlet use the same keys as the sprint (R does not restart).
+
 Local versus:
 
 | Action | Player 1 | Player 2 |
@@ -49,7 +52,7 @@ saved in the browser.
 
 ```
 packages/
-  engine/   pure, deterministic game logic, no dependencies (shared later by bot and server)
+  engine/   pure, deterministic game logic, no dependencies (shared by the bot and, later, the server)
     src/game.ts     the game state machine: input, DAS/ARR, gravity, lock delay, hold, clears, garbage
     src/attack.ts   the attack table: lines sent per clear, plus B2B, combo and perfect clear bonuses
     src/match.ts    a 1v1 round: two games on one tick, attacks routed between them, match replays
@@ -59,11 +62,20 @@ packages/
     src/board.ts    10 x 40 board (20 visible rows), line clears
     src/replay.ts   input recorder and replay runner
     test/           Vitest tests
+  bot/      the PvE bot, built on the engine
+    src/movegen.ts     every reachable spot for a piece (taps, tucks, spins)
+    src/evaluate.ts    board and move scoring, T-spin slot detection
+    src/search.ts      beam search over the preview; think(snapshot, level) -> plan
+    src/levels.ts      the 5 difficulty levels
+    src/controller.ts  turns a plan into key taps at the level's speed
+    test/              Vitest tests, including bot-vs-bot matches
   web/      Vite + Canvas 2D client
     src/main.ts       screens, 60 Hz fixed-step loop, sprint and versus flow
     src/render.ts     canvas drawing, one board or two side by side
     src/character.ts  placeholder characters and falling-object hits
     src/input.ts      keyboard bindings (sprint, player 1, player 2)
+    src/bot-worker.ts the bot's search in a Web Worker, so it never stalls rendering
+    src/bot-client.ts talks to the worker (falls back to the main thread if workers fail)
 ```
 
 ## How the engine works
@@ -110,3 +122,32 @@ Each clear attacks with a base value plus bonuses:
 lines before cancelling: 1 apple, 2 flowerpot, 3 bowling ball, 4 anvil, 5-6 piano,
 7-9 cow, 10+ car. A fully cancelled attack bounces off an umbrella. These are
 placeholder shapes; real art comes in phase 6.
+
+## The bot (phase 3)
+
+The bot plays by the same rules as a person: it only decides where each piece
+goes, then presses keys for it at a capped speed. It plays its own `Game` in
+the same `Match`, so it gets the same pieces and garbage as you.
+
+For each piece it:
+
+1. **Finds every reachable spot** for the current piece and the hold piece by
+   searching taps from where the piece is (moves, rotations with SRS kicks,
+   soft drops), which includes tucks and T-spins.
+2. **Looks ahead** with a beam search over the next pieces in the preview,
+   keeping the best few boards at each step.
+3. **Scores boards** for height, holes, bumpiness, a well for QUADs and ready
+   T-spin slots, and **scores moves** for what they clear and send. The weights
+   start from the open-source Cold Clear bot's defaults.
+4. **Taps the plan out**, then hard drops, timed so it keeps its level's speed.
+
+| Level | Pieces per second | Looks ahead | T-spins | Mistakes |
+| --- | --- | --- | --- | --- |
+| 1 Beginner | 0.8 | current piece only, no hold | no | 1 piece in 5 |
+| 2 Casual | 1.3 | 1 preview | no | 12% |
+| 3 Intermediate | 2.0 | 2 previews | T-spin doubles | 4% |
+| 4 Advanced | 3.0 | 3 previews | all, keeps back-to-back | 1% |
+| 5 Expert | 4.0 | 5 previews | all | none |
+
+Levels and weights live in `packages/bot/src/levels.ts`, so tuning a level is
+a one-line change. In bot-vs-bot tests every level beats the one below it.

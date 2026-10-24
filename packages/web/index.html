@@ -15,13 +15,19 @@
         <p class="tagline">Clear lines, build combos, bury your opponent.</p>
         <div class="row">
           <button id="start" class="primary">40 Lines Sprint</button>
+          <button id="start-bot" class="primary">Versus bot</button>
+          <button id="start-gauntlet" class="primary">Gauntlet</button>
           <button id="start-versus" class="primary">Local versus (2 players)</button>
         </div>
-        <p class="best">Sprint best: <span id="best">none yet</span></p>
+        <div class="bot-pick">
+          <span>Bot level</span>
+          <div id="bot-levels" class="segmented"></div>
+        </div>
+        <p class="best">Sprint best: <span id="best">none yet</span> · Gauntlet: <span id="gauntlet-best">not started</span></p>
         <button id="open-settings">Handling settings</button>
         <div class="row tables">
         <table class="controls">
-          <tr><th colspan="2">Sprint</th></tr>
+          <tr><th colspan="2">Sprint and versus bot</th></tr>
           <tr><td>Move</td><td>&larr; &rarr;</td></tr>
           <tr><td>Soft drop</td><td>&darr;</td></tr>
           <tr><td>Hard drop</td><td>Space</td></tr>
@@ -43,7 +49,7 @@
           <tr><td>Menu</td><td colspan="2">Esc</td></tr>
         </table>
         </div>
-        <p class="hint wide">First to 2 rounds wins. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
+        <p class="hint wide">The gauntlet runs through all 5 bots from Beginner to Expert; lose a match and the run ends. Every match is first to 2 rounds. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
       </section>
 
       <section id="settings" class="overlay hidden">

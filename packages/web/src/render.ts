@@ -68,6 +68,8 @@ export interface VersusHud {
   roundsToWin: number;
   /** Big text over both boards, e.g. at the end of a round. */
   banner: string | null;
+  /** Shown above each board. */
+  names: [string, string];
 }
 
 export function formatTime(ticks: number): string {
@@ -177,10 +179,12 @@ export class Renderer {
     c.fillStyle = color;
     c.font = `800 16px ${FONT}`;
     c.textAlign = 'left';
-    c.fillText(`PLAYER ${player + 1}`, right - SIDE_W, BOARD_Y - 40);
+    const name = hud.names[player];
+    c.fillText(name, right - SIDE_W, BOARD_Y - 40);
+    const pipsX = right - SIDE_W + c.measureText(name).width + 16;
     for (let r = 0; r < hud.roundsToWin; r++) {
       c.beginPath();
-      c.arc(right - SIDE_W + 92 + r * 16, BOARD_Y - 45, 5, 0, Math.PI * 2);
+      c.arc(pipsX + r * 16, BOARD_Y - 45, 5, 0, Math.PI * 2);
       c.fillStyle = r < hud.score[player] ? color : '#2b2f45';
       c.fill();
     }

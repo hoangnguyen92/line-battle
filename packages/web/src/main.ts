@@ -14,10 +14,21 @@ import {
   type MatchReplay,
   type Replay,
 } from '@line-battle/engine';
+import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@line-battle/bot';
+import { BotWorker } from './bot-client';
 import { CharacterView } from './character';
 import { Keyboard, P1_BINDINGS, P2_BINDINGS, SOLO_BINDINGS } from './input';
 import { formatTime, PLAYER_COLORS, Renderer, type Popup } from './render';
-import { loadBestTicks, loadHandling, saveBestTicks, saveHandling } from './settings';
+import {
+  loadBestTicks,
+  loadBotLevel,
+  loadGauntletBest,
+  loadHandling,
+  saveBestTicks,
+  saveBotLevel,
+  saveGauntletBest,
+  saveHandling,
+} from './settings';
 
 const SPRINT_LINES = 40;
 const ROUNDS_TO_WIN = 2;
@@ -29,7 +40,8 @@ const COUNTDOWN = ['3', '2', '1'];
 /** Never simulate more than this many ticks per frame (e.g. after a tab switch). */
 const MAX_CATCH_UP = 8;
 
-type Mode = 'sprint' | 'versus';
+/** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
+type Mode = 'sprint' | 'versus' | 'bot';
 type Screen = 'menu' | 'settings' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -64,6 +76,13 @@ let pendingVersusStart: [KeyEvent[], KeyEvent[]] = [[], []];
 let banner: string | null = null;
 let roundEndAt = 0;
 
+// Bot state
+const botWorker = new BotWorker();
+let botLevel: LevelId = loadBotLevel();
+let bot: BotController | null = null;
+/** Set during a gauntlet run; the bot's level is the current stage. */
+let gauntlet = false;
+
 // ---- screens --------------------------------------------------------------
 
 function show(next: Screen): void {
@@ -77,11 +96,20 @@ function show(next: Screen): void {
 function refreshBest(): void {
   const best = loadBestTicks();
   $('best').textContent = best ? formatTime(best) : 'none yet';
+  refreshBotMenu();
 }
 
 function setMode(next: Mode): void {
   mode = next;
   renderer.setLayout(next === 'sprint' ? 'solo' : 'versus');
+}
+
+function refreshBotMenu(): void {
+  document.querySelectorAll<HTMLButtonElement>('#bot-levels button').forEach((b) => {
+    b.classList.toggle('selected', Number(b.dataset.level) === botLevel);
+  });
+  const beaten = loadGauntletBest();
+  $('gauntlet-best').textContent = beaten === 5 ? 'all 5 bots beaten' : beaten > 0 ? `${beaten} of 5 bots beaten` : 'not started';
 }
 
 function startCountdown(): void {
@@ -101,13 +129,26 @@ function startSprint(): void {
 
 function startVersus(): void {
   setMode('versus');
+  gauntlet = false;
+  bot = null;
+  score = [0, 0];
+  startRound();
+}
+
+/** A match against the bot at `level`. */
+function startBotMatch(level: LevelId, inGauntlet: boolean): void {
+  setMode('bot');
+  gauntlet = inGauntlet;
+  bot = new BotController(LEVELS[level], botWorker.planner(level));
   score = [0, 0];
   startRound();
 }
 
 function startRound(): void {
   // Both players get the same pieces; a fresh seed each round.
-  const config: MatchConfig = { seed: randomSeed(), players: [{ handling: { ...handling } }, { handling: { ...handling } }] };
+  const second = mode === 'bot' ? BOT_HANDLING : handling;
+  const config: MatchConfig = { seed: randomSeed(), players: [{ handling: { ...handling } }, { handling: { ...second } }] };
+  bot?.reset();
   match = new Match(config);
   matchRecorder = new MatchRecorder(config);
   popups = [null, null];
@@ -116,16 +157,27 @@ function startRound(): void {
   startCountdown();
 }
 
+/** The names over the boards and in the result text. */
+function playerNames(): [string, string] {
+  if (mode !== 'bot' || !bot) return ['PLAYER 1', 'PLAYER 2'];
+  return ['YOU', `${bot.level.name.toUpperCase()} BOT`];
+}
+
 function retry(): void {
-  if (mode === 'sprint') startSprint();
-  else startVersus();
+  if (mode === 'sprint') return startSprint();
+  if (mode === 'versus') return startVersus();
+  if (!gauntlet || !bot) return startBotMatch(bot?.level.id ?? botLevel, false);
+  // Gauntlet: after a win go on to the next bot, after a loss start over.
+  const won = score[0] > score[1];
+  if (won && bot.level.id < 5) startBotMatch((bot.level.id + 1) as LevelId, true);
+  else startBotMatch(1, true);
 }
 
 function beginPlay(): void {
   // Keys held through the countdown (e.g. DAS charging) count from the first tick.
   for (const k of allKeyboards) k.clearPending();
   pendingStart = soloKeys.heldEvents();
-  pendingVersusStart = [versusKeys[0].heldEvents(), versusKeys[1].heldEvents()];
+  pendingVersusStart = mode === 'bot' ? [soloKeys.heldEvents(), []] : [versusKeys[0].heldEvents(), versusKeys[1].heldEvents()];
   accumulator = 0;
   show('playing');
 }
@@ -165,7 +217,12 @@ function endRound(): void {
   } else if (result !== null) {
     score[result]++;
     characters[1 - result].knockOut(now);
-    banner = score[result] >= ROUNDS_TO_WIN ? `PLAYER ${result + 1} WINS!` : `PLAYER ${result + 1} TAKES THE ROUND`;
+    const name = playerNames()[result];
+    if (mode === 'bot') {
+      banner = result === 0 ? (score[0] >= ROUNDS_TO_WIN ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : score[1] >= ROUNDS_TO_WIN ? 'THE BOT WINS' : 'THE BOT TAKES THE ROUND';
+    } else {
+      banner = score[result] >= ROUNDS_TO_WIN ? `${name} WINS!` : `${name} TAKES THE ROUND`;
+    }
   }
   roundEndAt = now;
   show('roundEnd');
@@ -173,12 +230,41 @@ function endRound(): void {
 
 function showMatchResult(): void {
   if (!match) return;
+  if (mode === 'bot') return showBotResult();
   const winner = score[0] > score[1] ? 1 : 2;
   $('result-title').textContent = `Player ${winner} wins!`;
   $('result-time').textContent = `${score[0]} – ${score[1]}`;
   const [a, b] = match.players;
   $('result-detail').textContent = `Last round: P1 sent ${a.attackSent} lines, P2 sent ${b.attackSent} lines`;
   $('retry').textContent = 'Rematch (Enter)';
+  show('result');
+}
+
+function showBotResult(): void {
+  if (!match || !bot) return;
+  const won = score[0] > score[1];
+  const level = bot.level;
+  const [a, b] = match.players;
+  let title = won ? `You beat the ${level.name} bot!` : `The ${level.name} bot wins`;
+  let retryLabel = 'Rematch (Enter)';
+  if (gauntlet) {
+    const beaten = won ? level.id : level.id - 1;
+    if (beaten > loadGauntletBest()) saveGauntletBest(beaten);
+    if (won && level.id === 5) {
+      title = 'Gauntlet complete: all 5 bots beaten!';
+      retryLabel = 'Run it again (Enter)';
+    } else if (won) {
+      title = `Bot ${level.id} of 5 beaten!`;
+      retryLabel = `Next: ${LEVELS[(level.id + 1) as LevelId].name} bot (Enter)`;
+    } else {
+      title = `Gauntlet over at bot ${level.id} of 5 (${level.name})`;
+      retryLabel = 'Start over (Enter)';
+    }
+  }
+  $('result-title').textContent = title;
+  $('result-time').textContent = `${score[0]} – ${score[1]}`;
+  $('result-detail').textContent = `Last round: you sent ${a.attackSent} lines, the bot sent ${b.attackSent}`;
+  $('retry').textContent = retryLabel;
   show('result');
 }
 
@@ -198,9 +284,11 @@ function stepSprint(): void {
 
 function stepVersus(): void {
   if (!match || !matchRecorder) return;
+  const human = mode === 'bot' ? soloKeys : versusKeys[0];
+  const second = mode === 'bot' && bot ? bot.update(match.players[1]) : versusKeys[1].take();
   const inputs: [KeyEvent[], KeyEvent[]] = [
-    [...pendingVersusStart[0], ...versusKeys[0].take()],
-    [...pendingVersusStart[1], ...versusKeys[1].take()],
+    [...pendingVersusStart[0], ...human.take()],
+    [...pendingVersusStart[1], ...second],
   ];
   pendingVersusStart = [[], []];
   for (const p of [0, 1] as const) for (const e of inputs[p]) matchRecorder.record(p, match.tick, e);
@@ -260,8 +348,8 @@ function frame(now: number): void {
     else startRound();
   }
 
-  if (mode === 'versus' && match) {
-    renderer.drawVersus(match, { countdown, popups, characters, score, roundsToWin: ROUNDS_TO_WIN, banner });
+  if (mode !== 'sprint' && match) {
+    renderer.drawVersus(match, { countdown, popups, characters, score, roundsToWin: ROUNDS_TO_WIN, banner, names: playerNames() });
   } else {
     renderer.draw(mode === 'sprint' ? game : null, { goalLines: SPRINT_LINES, countdown, popup });
   }
@@ -285,7 +373,7 @@ addEventListener('keydown', (e) => {
   }
   if (e.code === 'Enter' && screen === 'menu') return startSprint();
   if (e.code === 'Enter' && screen === 'result') return retry();
-  const keyboards = mode === 'sprint' ? [soloKeys] : versusKeys;
+  const keyboards = mode === 'versus' ? versusKeys : [soloKeys];
   let claimed = false;
   for (const k of keyboards) claimed = k.keyDown(e.code) || claimed;
   if (claimed && inGame()) e.preventDefault();
@@ -301,6 +389,21 @@ addEventListener('blur', () => allKeyboards.forEach((k) => k.releaseAll()));
 
 $('start').addEventListener('click', startSprint);
 $('start-versus').addEventListener('click', startVersus);
+$('start-bot').addEventListener('click', () => startBotMatch(botLevel, false));
+$('start-gauntlet').addEventListener('click', () => startBotMatch(1, true));
+const levelButtons = $('bot-levels');
+for (const id of LEVEL_IDS) {
+  const b = document.createElement('button');
+  b.dataset.level = String(id);
+  b.textContent = `${id} ${LEVELS[id].name}`;
+  b.title = `${LEVELS[id].pps} pieces per second`;
+  b.addEventListener('click', () => {
+    botLevel = id;
+    saveBotLevel(id);
+    refreshBotMenu();
+  });
+  levelButtons.append(b);
+}
 $('retry').addEventListener('click', retry);
 $('to-menu').addEventListener('click', () => show('menu'));
 $('open-settings').addEventListener('click', openSettings);
@@ -356,5 +459,5 @@ requestAnimationFrame(frame);
 
 // Dev builds only: a handle for poking at the game from the browser console.
 if (import.meta.env.DEV) {
-  Object.assign(window, { lineBattle: { get match() { return match; }, characters } });
+  Object.assign(window, { lineBattle: { get match() { return match; }, get bot() { return bot; }, characters } });
 }

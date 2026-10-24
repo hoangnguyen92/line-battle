@@ -84,3 +84,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .tables { align-items: flex-start; gap: 24px; }
 .controls th { padding: 2px 10px; text-align: left; color: var(--text); font-size: 13px; }
 .hint.wide { max-width: 560px; }
+
+.bot-pick { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.segmented { display: flex; }
+.segmented button { border-radius: 0; padding: 6px 12px; font-size: 13px; margin-left: -1px; }
+.segmented button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.segmented button:last-child { border-radius: 0 8px 8px 0; }
+.segmented button.selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; position: relative; }

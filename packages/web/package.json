@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@line-battle/bot": "0.1.0",
     "@line-battle/engine": "0.1.0"
   }
 }

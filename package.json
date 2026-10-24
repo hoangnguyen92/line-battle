@@ -12,7 +12,7 @@
     "preview": "npm run preview -w @line-battle/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p packages/engine && tsc -p packages/web"
+    "typecheck": "tsc -p packages/engine && tsc -p packages/bot && tsc -p packages/web"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
