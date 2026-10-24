@@ -12,11 +12,16 @@
 
       <section id="menu" class="overlay">
         <h1>Line Battle</h1>
-        <p class="tagline">Clear 40 lines as fast as you can.</p>
-        <button id="start" class="primary">Play 40 Lines Sprint</button>
-        <p class="best">Best: <span id="best">none yet</span></p>
+        <p class="tagline">Clear lines, build combos, bury your opponent.</p>
+        <div class="row">
+          <button id="start" class="primary">40 Lines Sprint</button>
+          <button id="start-versus" class="primary">Local versus (2 players)</button>
+        </div>
+        <p class="best">Sprint best: <span id="best">none yet</span></p>
         <button id="open-settings">Handling settings</button>
+        <div class="row tables">
         <table class="controls">
+          <tr><th colspan="2">Sprint</th></tr>
           <tr><td>Move</td><td>&larr; &rarr;</td></tr>
           <tr><td>Soft drop</td><td>&darr;</td></tr>
           <tr><td>Hard drop</td><td>Space</td></tr>
@@ -26,6 +31,19 @@
           <tr><td>Hold</td><td>C or Shift</td></tr>
           <tr><td>Restart / menu</td><td>R / Esc</td></tr>
         </table>
+        <table class="controls">
+          <tr><th>Versus</th><th>Player 1</th><th>Player 2</th></tr>
+          <tr><td>Move</td><td>A D</td><td>&larr; &rarr;</td></tr>
+          <tr><td>Soft drop</td><td>S</td><td>&darr;</td></tr>
+          <tr><td>Hard drop</td><td>W</td><td>&uarr;</td></tr>
+          <tr><td>Rotate clockwise</td><td>E</td><td>.</td></tr>
+          <tr><td>Rotate counter-clockwise</td><td>Q</td><td>,</td></tr>
+          <tr><td>Rotate 180</td><td>Z</td><td>/</td></tr>
+          <tr><td>Hold</td><td>Left Shift</td><td>Right Shift</td></tr>
+          <tr><td>Menu</td><td colspan="2">Esc</td></tr>
+        </table>
+        </div>
+        <p class="hint wide">First to 2 rounds wins. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
       </section>
 
       <section id="settings" class="overlay hidden">

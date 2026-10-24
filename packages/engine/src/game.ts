@@ -1,6 +1,8 @@
+import { attackFor } from './attack';
 import { Bag } from './bag';
-import { Board, VISIBLE_HEIGHT } from './board';
-import { CELL_ID, PIECE_CELLS, type PieceType, type Rotation } from './pieces';
+import { Board, BOARD_WIDTH, VISIBLE_HEIGHT } from './board';
+import { CELL_ID, GARBAGE_CELL, PIECE_CELLS, type PieceType, type Rotation } from './pieces';
+import { Rng } from './rng';
 import { getKicks } from './srs';
 
 /** The simulation runs at a fixed 60 ticks per second. */
@@ -41,6 +43,21 @@ export interface GameConfig {
   previewCount?: number;
   /** Lines needed to finish (40 for sprint). Undefined = endless. */
   goalLines?: number;
+  /** Ticks received garbage waits before it can rise. Default 20 (~330 ms). */
+  garbageDelay?: number;
+  /** Most garbage lines that rise on one lock. Default 8. */
+  garbageCap?: number;
+  /** Percent chance that a new attack's hole is in a different column. Default 30. */
+  garbageMessiness?: number;
+}
+
+/** Garbage waiting to rise: one entry per received attack. */
+export interface PendingGarbage {
+  lines: number;
+  /** Column of the hole; every line of one attack shares it. */
+  hole: number;
+  /** First tick this garbage may rise. */
+  readyTick: number;
 }
 
 export type Key = 'left' | 'right' | 'softDrop' | 'hardDrop' | 'rotateCW' | 'rotateCCW' | 'rotate180' | 'hold';
@@ -60,6 +77,8 @@ export interface ActivePiece {
   rot: Rotation;
 }
 
+export type TopOutReason = 'blockOut' | 'lockOut' | 'garbageOut';
+
 export type SpinKind = 'none' | 'mini' | 'full';
 
 export interface ClearInfo {
@@ -71,14 +90,28 @@ export interface ClearInfo {
   b2b: number;
   /** Combo counter: 0 for the first clear in a row, then 1, 2, ... */
   combo: number;
+  /** Lines this clear attacks with, before cancelling. */
+  attack: number;
+  tick: number;
+}
+
+export interface AttackInfo {
+  /** Lines the clear produced, before cancelling (picks the hit animation). */
+  raw: number;
+  /** Lines used to cancel garbage waiting for this player. */
+  cancelled: number;
+  /** Lines that go on to the opponent. */
+  sent: number;
   tick: number;
 }
 
 export type GameEvent =
   | { type: 'lock'; piece: PieceType; tick: number }
   | { type: 'clear'; info: ClearInfo }
+  | { type: 'attack'; info: AttackInfo }
+  | { type: 'garbage'; lines: number; tick: number }
   | { type: 'hold'; piece: PieceType }
-  | { type: 'topOut'; reason: 'blockOut' | 'lockOut'; tick: number }
+  | { type: 'topOut'; reason: TopOutReason; tick: number }
   | { type: 'finish'; tick: number };
 
 const SPAWN_X: Record<PieceType, number> = { I: 3, J: 3, L: 3, O: 4, S: 3, T: 3, Z: 3 };
@@ -104,8 +137,16 @@ export class Game {
   combo = -1;
   toppedOut = false;
   finished = false;
+  /** Garbage waiting to rise, oldest first. */
+  incoming: PendingGarbage[] = [];
+  /** Lines sent to the opponent after cancelling. */
+  attackSent = 0;
+  /** Garbage lines that have risen into this board. */
+  garbageReceived = 0;
 
   private bag: Bag;
+  private garbageRng: Rng;
+  private lastHole = -1;
   private upcoming: PieceType[] = [];
   private events: GameEvent[] = [];
 
@@ -133,9 +174,13 @@ export class Game {
       maxLockResets: 15,
       entryDelay: 6,
       previewCount: 5,
+      garbageDelay: 20,
+      garbageCap: 8,
+      garbageMessiness: 30,
       ...config,
     };
     this.bag = new Bag(config.seed);
+    this.garbageRng = new Rng(config.seed ^ 0x5bd1e995);
     this.spawn(this.takeNext());
   }
 
@@ -147,6 +192,28 @@ export class Game {
   get queue(): PieceType[] {
     this.fillQueue();
     return this.upcoming.slice(0, this.config.previewCount);
+  }
+
+  /** Total lines waiting to rise. */
+  get incomingLines(): number {
+    return this.incoming.reduce((n, g) => n + g.lines, 0);
+  }
+
+  /**
+   * Queues an attack from the opponent. It can rise once garbageDelay ticks
+   * have passed, on the next lock that clears nothing.
+   */
+  receiveGarbage(lines: number): void {
+    if (lines <= 0 || this.over) return;
+    const { garbageRng: rng } = this;
+    let hole = this.lastHole;
+    if (hole < 0) {
+      hole = rng.int(BOARD_WIDTH);
+    } else if (rng.int(100) < this.config.garbageMessiness) {
+      hole = (hole + 1 + rng.int(BOARD_WIDTH - 1)) % BOARD_WIDTH;
+    }
+    this.lastHole = hole;
+    this.incoming.push({ lines, hole, readyTick: this.tick + this.config.garbageDelay });
   }
 
   /** Returns and clears the events produced since the last call. */
@@ -414,7 +481,7 @@ export class Game {
     this.spawn(next);
   }
 
-  private topOut(reason: 'blockOut' | 'lockOut'): void {
+  private topOut(reason: TopOutReason): void {
     this.toppedOut = true;
     this.events.push({ type: 'topOut', reason, tick: this.tick });
   }
@@ -458,21 +525,27 @@ export class Game {
       this.combo = -1;
     }
     if (lines > 0 || spin !== 'none') {
-      this.events.push({
-        type: 'clear',
-        info: {
-          piece: p.type,
-          lines,
-          spin,
-          perfectClear: lines > 0 && this.board.isEmpty(),
-          b2b: lines > 0 ? Math.max(this.b2b, 0) : 0,
-          combo: Math.max(this.combo, 0),
-          tick: this.tick,
-        },
-      });
+      const info: ClearInfo = {
+        piece: p.type,
+        lines,
+        spin,
+        perfectClear: lines > 0 && this.board.isEmpty(),
+        b2b: lines > 0 ? Math.max(this.b2b, 0) : 0,
+        combo: Math.max(this.combo, 0),
+        attack: 0,
+        tick: this.tick,
+      };
+      info.attack = attackFor(info).total;
+      this.events.push({ type: 'clear', info });
+      if (info.attack > 0) this.sendAttack(info.attack);
     }
     this.lines += lines;
     this.holdUsed = false;
+    // Garbage only rises on a lock that clears nothing, so a combo holds it back.
+    if (lines === 0 && !this.riseGarbage()) {
+      this.topOut('garbageOut');
+      return;
+    }
 
     if (this.config.goalLines !== undefined && this.lines >= this.config.goalLines) {
       this.finished = true;
@@ -481,5 +554,40 @@ export class Game {
     }
     if (this.config.entryDelay > 0) this.entryTimer = this.config.entryDelay;
     else this.spawn(this.takeNext());
+  }
+
+  /** Cancels waiting garbage first, then reports what is left as sent. */
+  private sendAttack(raw: number): void {
+    let left = raw;
+    while (left > 0 && this.incoming.length > 0) {
+      const g = this.incoming[0];
+      const used = Math.min(left, g.lines);
+      g.lines -= used;
+      left -= used;
+      if (g.lines === 0) this.incoming.shift();
+    }
+    this.attackSent += left;
+    this.events.push({ type: 'attack', info: { raw, cancelled: raw - left, sent: left, tick: this.tick } });
+  }
+
+  /** Raises up to garbageCap ready lines. Returns false if that pushed blocks off the top. */
+  private riseGarbage(): boolean {
+    let budget = this.config.garbageCap;
+    let risen = 0;
+    let ok = true;
+    while (budget > 0 && this.incoming.length > 0 && this.incoming[0].readyTick <= this.tick) {
+      const g = this.incoming[0];
+      const n = Math.min(budget, g.lines);
+      ok = this.board.addGarbage(n, g.hole, GARBAGE_CELL) && ok;
+      g.lines -= n;
+      budget -= n;
+      risen += n;
+      if (g.lines === 0) this.incoming.shift();
+    }
+    if (risen > 0) {
+      this.garbageReceived += risen;
+      this.events.push({ type: 'garbage', lines: risen, tick: this.tick });
+    }
+    return ok;
   }
 }

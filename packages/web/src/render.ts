@@ -5,8 +5,10 @@ import {
   TICK_RATE,
   VISIBLE_HEIGHT,
   type Game,
+  type Match,
   type PieceType,
 } from '@line-battle/engine';
+import { shade, type CharacterView } from './character';
 
 const CELL = 30;
 const MINI = 20;
@@ -14,8 +16,21 @@ const SPAWN_ROWS = 3; // rows drawn above the visible field so spawning pieces s
 const BOARD_X = 180;
 const BOARD_Y = 20 + SPAWN_ROWS * CELL;
 const SIDE_W = 140;
-export const CANVAS_W = BOARD_X * 2 + BOARD_WIDTH * CELL;
-export const CANVAS_H = BOARD_Y + VISIBLE_HEIGHT * CELL + 30;
+/** Width of one player's side: hold, board and queue. */
+const VIEW_W = BOARD_X * 2 + BOARD_WIDTH * CELL;
+const VERSUS_GAP = 30;
+const CANVAS_H = BOARD_Y + VISIBLE_HEIGHT * CELL + 30;
+const QUEUE_X = BOARD_X + BOARD_WIDTH * CELL + 16;
+const QUEUE_H = 5 * 64 + 12;
+/** The character stands in the space under the next queue. */
+const CHAR_Y = BOARD_Y + QUEUE_H + 14;
+const CHAR_H = VISIBLE_HEIGHT * CELL - QUEUE_H - 14;
+const METER_W = 8;
+const METER_X = BOARD_X - METER_W - 4;
+
+export type Layout = 'solo' | 'versus';
+
+export const PLAYER_COLORS = ['#3fc1b0', '#f08a5d'] as const;
 
 const COLORS: Record<PieceType, string> = {
   I: '#35c8de',
@@ -44,6 +59,17 @@ export interface HudState {
   popup: Popup | null;
 }
 
+export interface VersusHud {
+  countdown: string | null;
+  popups: [Popup | null, Popup | null];
+  characters: [CharacterView, CharacterView];
+  /** Rounds won by each player. */
+  score: [number, number];
+  roundsToWin: number;
+  /** Big text over both boards, e.g. at the end of a round. */
+  banner: string | null;
+}
+
 export function formatTime(ticks: number): string {
   const ms = Math.floor((ticks * 1000) / TICK_RATE);
   const m = Math.floor(ms / 60000);
@@ -54,6 +80,7 @@ export function formatTime(ticks: number): string {
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
+  private layout: Layout = 'solo';
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -61,20 +88,31 @@ export class Renderer {
     addEventListener('resize', () => this.resize());
   }
 
+  setLayout(layout: Layout): void {
+    if (layout === this.layout) return;
+    this.layout = layout;
+    this.resize();
+  }
+
+  private get width(): number {
+    return this.layout === 'solo' ? VIEW_W : VIEW_W * 2 + VERSUS_GAP;
+  }
+
   /** Fits the canvas to the window while keeping pixels crisp on high-DPI screens. */
   resize(): void {
-    const scale = Math.min(innerWidth / CANVAS_W, innerHeight / CANVAS_H, 1.6);
+    const w = this.width;
+    const scale = Math.min(innerWidth / w, innerHeight / CANVAS_H, 1.6);
     const dpr = devicePixelRatio || 1;
-    this.canvas.style.width = `${Math.floor(CANVAS_W * scale)}px`;
+    this.canvas.style.width = `${Math.floor(w * scale)}px`;
     this.canvas.style.height = `${Math.floor(CANVAS_H * scale)}px`;
-    this.canvas.width = Math.floor(CANVAS_W * scale * dpr);
+    this.canvas.width = Math.floor(w * scale * dpr);
     this.canvas.height = Math.floor(CANVAS_H * scale * dpr);
     this.ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
   }
 
   draw(game: Game | null, hud: HudState): void {
     const c = this.ctx;
-    c.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    c.clearRect(0, 0, this.width, CANVAS_H);
     this.drawWell();
     if (!game) return;
     this.drawStack(game);
@@ -84,6 +122,97 @@ export class Renderer {
     this.drawStats(game, hud);
     this.drawPopup(hud.popup);
     if (hud.countdown) this.drawCenterText(hud.countdown);
+  }
+
+  /** Two boards side by side, each with its garbage meter and character. */
+  drawVersus(match: Match, hud: VersusHud): void {
+    const c = this.ctx;
+    const now = performance.now();
+    c.clearRect(0, 0, this.width, CANVAS_H);
+    match.players.forEach((game, i) => {
+      const character = hud.characters[i];
+      const [sx, sy] = character.shake(now);
+      c.save();
+      c.translate(i * (VIEW_W + VERSUS_GAP) + sx, sy);
+      this.drawWell();
+      this.drawStack(game);
+      this.drawActive(game);
+      this.drawGarbageMeter(game, match.tick);
+      this.drawHold(game);
+      this.drawQueue(game);
+      this.drawVersusStats(game, i, hud);
+      this.drawPopup(hud.popups[i]);
+      this.panel(QUEUE_X, CHAR_Y, SIDE_W, CHAR_H);
+      character.draw(c, QUEUE_X, CHAR_Y, SIDE_W, CHAR_H, now);
+      if (hud.countdown) this.drawCenterText(hud.countdown);
+      c.restore();
+    });
+    if (hud.banner) this.drawBanner(hud.banner);
+  }
+
+  /**
+   * Red bar beside the board for garbage that can rise now, orange for
+   * garbage still in its delay (the window to cancel it).
+   */
+  private drawGarbageMeter(game: Game, tick: number): void {
+    const c = this.ctx;
+    const bottom = BOARD_Y + VISIBLE_HEIGHT * CELL;
+    c.fillStyle = '#151724';
+    c.fillRect(METER_X, BOARD_Y, METER_W, VISIBLE_HEIGHT * CELL);
+    let y = bottom;
+    for (const g of game.incoming) {
+      const h = Math.min(g.lines * CELL, y - BOARD_Y);
+      if (h <= 0) break;
+      c.fillStyle = g.readyTick <= tick ? '#ff4d5e' : '#ffae42';
+      c.fillRect(METER_X, y - h, METER_W, h - 1);
+      y -= h;
+    }
+  }
+
+  private drawVersusStats(game: Game, player: number, hud: VersusHud): void {
+    const c = this.ctx;
+    const right = BOARD_X - 16;
+    const color = PLAYER_COLORS[player];
+    // Name and round pips above the hold box.
+    c.fillStyle = color;
+    c.font = `800 16px ${FONT}`;
+    c.textAlign = 'left';
+    c.fillText(`PLAYER ${player + 1}`, right - SIDE_W, BOARD_Y - 40);
+    for (let r = 0; r < hud.roundsToWin; r++) {
+      c.beginPath();
+      c.arc(right - SIDE_W + 92 + r * 16, BOARD_Y - 45, 5, 0, Math.PI * 2);
+      c.fillStyle = r < hud.score[player] ? color : '#2b2f45';
+      c.fill();
+    }
+
+    let y = BOARD_Y + VISIBLE_HEIGHT * CELL - 130;
+    const minutes = game.tick / TICK_RATE / 60;
+    const rows: [string, string][] = [
+      ['SENT', String(game.attackSent)],
+      ['APM', minutes > 0 ? (game.attackSent / minutes).toFixed(1) : '0.0'],
+      ['PPS', minutes > 0 ? (game.piecesPlaced / (minutes * 60)).toFixed(2) : '0.00'],
+    ];
+    for (const [name, value] of rows) {
+      this.label(name, right, y, 'right');
+      c.fillStyle = '#e8e9f1';
+      c.font = `700 20px ${FONT}`;
+      c.textAlign = 'right';
+      c.fillText(value, right, y + 24);
+      y += 44;
+    }
+  }
+
+  private drawBanner(text: string): void {
+    const c = this.ctx;
+    const w = this.width;
+    c.fillStyle = 'rgba(7,8,13,0.7)';
+    c.fillRect(0, CANVAS_H / 2 - 50, w, 100);
+    c.fillStyle = '#ffffff';
+    c.font = `800 44px ${FONT}`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(text, w / 2, CANVAS_H / 2);
+    c.textBaseline = 'alphabetic';
   }
 
   private drawWell(): void {
@@ -249,7 +378,7 @@ export class Renderer {
   }
 
   private drawQueue(game: Game): void {
-    const x = BOARD_X + BOARD_WIDTH * CELL + 16;
+    const x = QUEUE_X;
     const y = BOARD_Y;
     this.label('NEXT', x, y - 8);
     const queue = game.queue;
@@ -307,12 +436,4 @@ export class Renderer {
     c.fillText(text, BOARD_X + (BOARD_WIDTH * CELL) / 2, BOARD_Y + (VISIBLE_HEIGHT * CELL) / 2);
     c.textBaseline = 'alphabetic';
   }
-}
-
-/** Lightens (amount > 0) or darkens (amount < 0) a #rrggbb colour. */
-function shade(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (v: number) => Math.round(amount >= 0 ? v + (255 - v) * amount : v * (1 + amount));
-  const r = mix(n >> 16), g = mix((n >> 8) & 255), b = mix(n & 255);
-  return `rgb(${r},${g},${b})`;
 }

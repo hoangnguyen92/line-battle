@@ -33,6 +33,21 @@ export class Board {
     return BOARD_HEIGHT - write;
   }
 
+  /**
+   * Pushes the stack up and fills the bottom `rows` rows with garbage, leaving
+   * one hole in column `hole`. Returns false if blocks were pushed off the top.
+   */
+  addGarbage(rows: number, hole: number, cell: number): boolean {
+    if (rows <= 0) return true;
+    rows = Math.min(rows, BOARD_HEIGHT);
+    const lost = this.cells.subarray((BOARD_HEIGHT - rows) * BOARD_WIDTH).some((v) => v !== 0);
+    this.cells.copyWithin(rows * BOARD_WIDTH, 0, (BOARD_HEIGHT - rows) * BOARD_WIDTH);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < BOARD_WIDTH; x++) this.set(x, y, x === hole ? 0 : cell);
+    }
+    return !lost;
+  }
+
   isEmpty(): boolean {
     return this.cells.every((v) => v === 0);
   }
