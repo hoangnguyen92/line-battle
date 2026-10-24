@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Line Battle</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="game" aria-label="Line Battle playfield"></canvas>
+
+      <section id="menu" class="overlay">
+        <h1>Line Battle</h1>
+        <p class="tagline">Clear 40 lines as fast as you can.</p>
+        <button id="start" class="primary">Play 40 Lines Sprint</button>
+        <p class="best">Best: <span id="best">none yet</span></p>
+        <button id="open-settings">Handling settings</button>
+        <table class="controls">
+          <tr><td>Move</td><td>&larr; &rarr;</td></tr>
+          <tr><td>Soft drop</td><td>&darr;</td></tr>
+          <tr><td>Hard drop</td><td>Space</td></tr>
+          <tr><td>Rotate clockwise</td><td>&uarr; or X</td></tr>
+          <tr><td>Rotate counter-clockwise</td><td>Z or Ctrl</td></tr>
+          <tr><td>Rotate 180</td><td>A</td></tr>
+          <tr><td>Hold</td><td>C or Shift</td></tr>
+          <tr><td>Restart / menu</td><td>R / Esc</td></tr>
+        </table>
+      </section>
+
+      <section id="settings" class="overlay hidden">
+        <h2>Handling</h2>
+        <label>DAS <output id="das-out"></output>
+          <input id="das" type="range" min="0" max="20" step="1" />
+        </label>
+        <label>ARR <output id="arr-out"></output>
+          <input id="arr" type="range" min="0" max="5" step="1" />
+        </label>
+        <label>Soft drop speed <output id="sdf-out"></output>
+          <input id="sdf" type="range" min="5" max="41" step="1" />
+        </label>
+        <p class="hint">DAS is the wait before a held key starts repeating. ARR is the time between repeats (0 = jump to the wall).</p>
+        <div class="row">
+          <button id="reset-settings">Defaults</button>
+          <button id="close-settings" class="primary">Done</button>
+        </div>
+      </section>
+
+      <section id="result" class="overlay hidden">
+        <h2 id="result-title"></h2>
+        <p id="result-time" class="big"></p>
+        <p id="result-detail"></p>
+        <div class="row">
+          <button id="retry" class="primary">Retry (R)</button>
+          <button id="to-menu">Menu (Esc)</button>
+        </div>
+        <button id="download-replay" class="link">Download replay</button>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

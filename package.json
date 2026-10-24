@@ -1,0 +1,22 @@
+{
+  "name": "line-battle",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Line Battle: a falling-block versus game for the web",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @line-battle/web",
+    "build": "npm run build -w @line-battle/web",
+    "preview": "npm run preview -w @line-battle/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p packages/engine && tsc -p packages/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  }
+}

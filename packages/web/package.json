@@ -1,0 +1,14 @@
+{
+  "name": "@line-battle/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@line-battle/engine": "0.1.0"
+  }
+}
