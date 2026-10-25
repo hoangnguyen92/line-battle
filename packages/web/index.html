@@ -16,42 +16,63 @@
     <main id="app">
       <canvas id="game" aria-label="Line Battle playfield"></canvas>
 
-      <section id="menu" class="overlay">
-        <h1>Line Battle</h1>
-        <p class="tagline">Clear lines, build combos, bury your opponent.</p>
-        <div class="account-bar">
-          <span id="account-status">Playing as a guest</span>
-          <button id="open-account" class="link">Log in or sign up</button>
-          <button id="open-profile" class="link hidden">Profile and leaderboard</button>
-          <button id="log-out" class="link hidden">Log out</button>
+      <section id="menu" class="overlay menu">
+        <header class="menu-head">
+          <h1>Line Battle</h1>
+          <p class="tagline">Clear lines, build combos, bury your opponent.</p>
+          <div class="account-bar">
+            <span id="account-status">Playing as a guest</span>
+            <button id="open-account" class="link">Log in or sign up</button>
+            <button id="open-profile" class="link hidden">Profile and leaderboard</button>
+            <button id="log-out" class="link hidden">Log out</button>
+          </div>
+        </header>
+
+        <div class="modes">
+          <div class="card">
+            <h3>Solo and local</h3>
+            <button id="start" class="primary">40 Lines Sprint</button>
+            <p class="stat">Best: <span id="best">none yet</span></p>
+            <button id="start-versus">Local versus (2 players)</button>
+            <button id="start-tutorial">How to play</button>
+          </div>
+
+          <div class="card">
+            <h3>Versus bots</h3>
+            <div class="field">
+              <span class="label">Bot level</span>
+              <div id="bot-levels" class="segmented"></div>
+            </div>
+            <button id="start-bot" class="primary">Versus bot</button>
+            <button id="start-gauntlet">Gauntlet</button>
+            <p class="stat">Gauntlet: <span id="gauntlet-best">not started</span></p>
+          </div>
+
+          <div class="card online-pick">
+            <h3>Online 1v1</h3>
+            <input id="player-name" type="text" maxlength="16" placeholder="Your name" aria-label="Your name" />
+            <div class="pair">
+              <button id="online-ranked" class="primary" title="Rated matches against players near your rating. Needs an account.">Ranked</button>
+              <button id="online-quick" class="primary">Quick match</button>
+            </div>
+            <span class="divider">Private room with a friend</span>
+            <button id="online-create">Create room</button>
+            <div class="pair">
+              <input id="room-code" type="text" maxlength="5" placeholder="CODE" aria-label="Room code" />
+              <button id="online-join">Join</button>
+            </div>
+            <select id="region" aria-label="Your region" title="Matchmaking pairs players in the same region first."></select>
+          </div>
         </div>
-        <div class="row">
-          <button id="start-tutorial">How to play</button>
-          <button id="start" class="primary">40 Lines Sprint</button>
-          <button id="start-bot" class="primary">Versus bot</button>
-          <button id="start-gauntlet" class="primary">Gauntlet</button>
-          <button id="start-versus" class="primary">Local versus (2 players)</button>
-        </div>
-        <div class="online-pick">
-          <span>Online 1v1</span>
-          <input id="player-name" type="text" maxlength="16" placeholder="Your name" aria-label="Your name" />
-          <button id="online-ranked" class="primary" title="Rated matches against players near your rating. Needs an account.">Ranked</button>
-          <button id="online-quick" class="primary">Quick match</button>
-          <button id="online-create">Create room</button>
-          <input id="room-code" type="text" maxlength="5" placeholder="CODE" aria-label="Room code" />
-          <button id="online-join">Join</button>
-          <select id="region" aria-label="Your region" title="Matchmaking pairs players in the same region first."></select>
-        </div>
-        <div class="bot-pick">
-          <span>Bot level</span>
-          <div id="bot-levels" class="segmented"></div>
-        </div>
-        <p class="best">Sprint best: <span id="best">none yet</span> · Gauntlet: <span id="gauntlet-best">not started</span></p>
-        <div class="row">
-          <button id="open-customize">Character and skins</button>
-          <button id="open-controls">Controls</button>
-          <button id="open-settings">Handling</button>
-        </div>
+
+        <nav class="menu-foot">
+          <button id="open-customize" class="link">Character and skins</button>
+          <button id="open-controls" class="link">Controls</button>
+          <button id="open-settings" class="link">Handling</button>
+        </nav>
+
+        <details class="reference">
+          <summary>Keys and rules</summary>
         <div class="row tables">
         <table id="solo-controls" class="controls"></table>
         <table class="controls">
@@ -67,6 +88,7 @@
         </table>
         </div>
         <p class="hint wide">Online matches are first to 2 rounds and use the sprint keys. Ranked and quick match pair you with a player near your rating, in your region first. Ranked moves your rating and needs an account. Create a room and send its code to a friend to play them directly. The gauntlet runs through all 5 bots from Beginner to Expert; lose a match and the run ends. Every match is first to 2 rounds. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
+        </details>
       </section>
 
       <section id="settings" class="overlay hidden">

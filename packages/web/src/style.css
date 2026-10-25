@@ -85,14 +85,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .controls th { padding: 2px 10px; text-align: left; color: var(--text); font-size: 13px; }
 .hint.wide { max-width: 560px; }
 
-.bot-pick { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
 .segmented { display: flex; }
 .segmented button { border-radius: 0; padding: 6px 12px; font-size: 13px; margin-left: -1px; }
 .segmented button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
 .segmented button:last-child { border-radius: 0 8px 8px 0; }
 .segmented button.selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; position: relative; }
 
-.online-pick { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); flex-wrap: wrap; justify-content: center; }
 .online-pick input {
   font: inherit;
   color: var(--text);
@@ -101,8 +99,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   border-radius: 8px;
   padding: 8px 10px;
 }
-#player-name { width: 130px; }
-#room-code { width: 80px; text-transform: uppercase; letter-spacing: 0.15em; text-align: center; }
+#room-code { width: 0; flex: 1; min-width: 64px; text-transform: uppercase; letter-spacing: 0.15em; text-align: center; }
 #lobby-code { letter-spacing: 0.2em; user-select: all; }
 
 .account-bar { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
@@ -169,6 +166,49 @@ label.check { flex-direction: row; align-items: center; gap: 8px; width: auto; }
 .tip.done { animation: pop 0.35s ease-out; }
 @keyframes pop { 0% { transform: translateX(-50%) scale(1.06); } 100% { transform: translateX(-50%) scale(1); } }
 .overlay { max-height: 96vh; overflow-y: auto; }
+
+/* ---- main menu: header, three mode cards, footer links, folded reference ---- */
+.menu { width: min(900px, 94vw); gap: 18px; }
+.menu-head { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.account-bar { justify-content: center; flex-wrap: wrap; }
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%; }
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 16px;
+  background: #12141f;
+  border: 1px solid #262a3d;
+  border-radius: 12px;
+  text-align: left;
+}
+.card h3 { margin: 0 0 4px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+.card .stat { margin: -2px 0 2px; font-size: 13px; color: var(--muted); }
+.card .field { display: flex; flex-direction: column; gap: 6px; }
+.card .label { font-size: 13px; color: var(--muted); }
+.card .pair { display: flex; gap: 8px; }
+.card .pair > button { flex: 1; padding-left: 10px; padding-right: 10px; white-space: nowrap; }
+.card .divider { font-size: 12px; color: var(--muted); text-align: center; }
+.card input:not(#room-code), .card select { width: 100%; }
+/* Bot levels stack as a joined vertical list so all five names fit a card. */
+#bot-levels { flex-direction: column; }
+#bot-levels button { margin: -1px 0 0; border-radius: 0; text-align: left; }
+#bot-levels button:first-child { margin-top: 0; border-radius: 8px 8px 0 0; }
+#bot-levels button:last-child { border-radius: 0 0 8px 8px; }
+.menu-foot { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+.menu-foot button.link { font-size: 14px; text-decoration: none; }
+.menu-foot button.link:hover { color: var(--text); }
+.reference { width: 100%; border-top: 1px solid #262a3d; padding-top: 12px; }
+.reference summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.reference summary:hover { color: var(--text); }
+.reference[open] summary { margin-bottom: 12px; }
+.reference .tables { justify-content: center; flex-wrap: wrap; }
+.reference .hint { margin: 12px auto 0; }
+@media (max-width: 760px) {
+  .modes { grid-template-columns: 1fr; }
+  .menu { padding: 20px 16px; }
+}
 #customize h3 { margin: 6px 0 0; }
 /* On wide screens the tutorial tip sits beside the board instead of over it. */
 @media (min-width: 1100px) {
