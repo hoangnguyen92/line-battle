@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.6",
     "@line-battle/bot": "0.1.0",
     "@line-battle/engine": "0.1.0"
   }

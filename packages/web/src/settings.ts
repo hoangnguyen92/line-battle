@@ -5,6 +5,7 @@ const HANDLING_KEY = 'lineBattle.handling';
 const SPRINT_BEST_KEY = 'lineBattle.sprintBestTicks';
 const BOT_LEVEL_KEY = 'lineBattle.botLevel';
 const GAUNTLET_BEST_KEY = 'lineBattle.gauntletBest';
+const NAME_KEY = 'lineBattle.name';
 
 // Storage can be unavailable (private mode, blocked site data), so every access is guarded.
 function read(key: string): string | null {
@@ -63,4 +64,13 @@ export function loadGauntletBest(): number {
 
 export function saveGauntletBest(beaten: number): void {
   write(GAUNTLET_BEST_KEY, String(beaten));
+}
+
+/** The name shown to online opponents. */
+export function loadName(): string {
+  return read(NAME_KEY) ?? '';
+}
+
+export function saveName(name: string): void {
+  write(NAME_KEY, name);
 }

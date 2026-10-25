@@ -18,16 +18,19 @@ import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@l
 import { BotWorker } from './bot-client';
 import { CharacterView } from './character';
 import { Keyboard, P1_BINDINGS, P2_BINDINGS, SOLO_BINDINGS } from './input';
+import { describeEnd, OnlineMatch, type JoinKind, type OnlinePhase } from './online';
 import { formatTime, PLAYER_COLORS, Renderer, type Popup } from './render';
 import {
   loadBestTicks,
   loadBotLevel,
   loadGauntletBest,
   loadHandling,
+  loadName,
   saveBestTicks,
   saveBotLevel,
   saveGauntletBest,
   saveHandling,
+  saveName,
 } from './settings';
 
 const SPRINT_LINES = 40;
@@ -41,8 +44,9 @@ const COUNTDOWN = ['3', '2', '1'];
 const MAX_CATCH_UP = 8;
 
 /** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
-type Mode = 'sprint' | 'versus' | 'bot';
-type Screen = 'menu' | 'settings' | 'countdown' | 'playing' | 'roundEnd' | 'result';
+type Mode = 'sprint' | 'versus' | 'bot' | 'online';
+/** 'lobby' covers connecting, waiting for an opponent and connection errors. */
+type Screen = 'menu' | 'settings' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -83,6 +87,10 @@ let bot: BotController | null = null;
 /** Set during a gauntlet run; the bot's level is the current stage. */
 let gauntlet = false;
 
+// Online state
+let online: OnlineMatch | null = null;
+let pendingOnlineStart: KeyEvent[] = [];
+
 // ---- screens --------------------------------------------------------------
 
 function show(next: Screen): void {
@@ -90,6 +98,9 @@ function show(next: Screen): void {
   $('menu').classList.toggle('hidden', next !== 'menu');
   $('settings').classList.toggle('hidden', next !== 'settings');
   $('result').classList.toggle('hidden', next !== 'result');
+  $('lobby').classList.toggle('hidden', next !== 'lobby');
+  $('download-replay').classList.toggle('hidden', !lastReplay || mode === 'online');
+  if (mode !== 'online') $<HTMLButtonElement>('retry').disabled = false;
   if (next === 'menu') refreshBest();
 }
 
@@ -164,6 +175,7 @@ function playerNames(): [string, string] {
 }
 
 function retry(): void {
+  if (mode === 'online') return online?.askRematch();
   if (mode === 'sprint') return startSprint();
   if (mode === 'versus') return startVersus();
   if (!gauntlet || !bot) return startBotMatch(bot?.level.id ?? botLevel, false);
@@ -268,6 +280,128 @@ function showBotResult(): void {
   show('result');
 }
 
+// ---- online ---------------------------------------------------------------
+
+function lobby(title: string, detail = '', code: string | null = null, cancel = 'Cancel (Esc)'): void {
+  $('lobby-title').textContent = title;
+  $('lobby-detail').textContent = detail;
+  $('lobby-code').textContent = code ?? '';
+  $('lobby-code').classList.toggle('hidden', !code);
+  $('lobby-cancel').textContent = cancel;
+  show('lobby');
+}
+
+function startOnline(how: JoinKind): void {
+  leaveOnline();
+  setMode('online');
+  match = null;
+  bot = null;
+  gauntlet = false;
+  lastReplay = null;
+  const name = $<HTMLInputElement>('player-name').value.trim();
+  saveName(name);
+  lobby('Connecting…', how.kind === 'quick' ? 'Looking for an opponent.' : '');
+  const m = new OnlineMatch({
+    phase: (p) => onOnlinePhase(m, p),
+    gameEvents: (side, events) => {
+      const now = performance.now();
+      for (const ev of events) {
+        if (ev.type === 'clear') popups[side] = { lines: describeClear(ev.info), at: now };
+        else if (ev.type === 'attack') {
+          popups[side]?.lines.push(ev.info.sent > 0 ? `+${ev.info.sent} SENT` : 'BLOCKED');
+          characters[1 - side].addHit(ev.info.raw, ev.info.sent === 0, now);
+        }
+      }
+    },
+    error: (message) => {
+      if (online === m) lobby('Not connected', message, null, 'Back (Esc)');
+    },
+  });
+  online = m;
+  void m.join(how, name, { ...handling });
+}
+
+function leaveOnline(): void {
+  online?.leave();
+  online = null;
+}
+
+function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
+  if (online !== m) return;
+  const now = performance.now();
+  if (phase === 'waiting') {
+    if (m.code) lobby('Room created', 'Send this code to a friend. The match starts when they join.', m.code);
+    else lobby('Looking for an opponent…', 'Quick match pairs you with the next player who joins.');
+  } else if (phase === 'countdown') {
+    for (const k of allKeyboards) k.clearPending();
+    popups = [null, null];
+    banner = null;
+    for (const c of characters) c.reset();
+    show('countdown');
+  } else if (phase === 'playing') {
+    for (const k of allKeyboards) k.clearPending();
+    pendingOnlineStart = soloKeys.heldEvents();
+    show('playing');
+  } else if (phase === 'roundEnd' || phase === 'matchEnd') {
+    const youWon = m.lastWinner === 'you';
+    if (m.lastWinner) characters[youWon ? 1 : 0].knockOut(now);
+    const match = phase === 'matchEnd';
+    banner = youWon ? (match ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : match ? `${m.names[1].toUpperCase()} WINS` : `${m.names[1].toUpperCase()} TAKES THE ROUND`;
+    roundEndAt = now;
+    show('roundEnd');
+  }
+}
+
+function showOnlineResult(m: OnlineMatch): void {
+  const youWon = m.lastWinner === 'you';
+  $('result-title').textContent = youWon ? 'You win!' : `${m.names[1]} wins`;
+  $('result-time').textContent = `${m.score[0]} – ${m.score[1]}`;
+  $('retry').textContent = 'Rematch (Enter)';
+  banner = null;
+  refreshOnlineResult(m);
+  show('result');
+}
+
+/** The result text under the score, kept up to date with rematch requests. */
+function refreshOnlineResult(m: OnlineMatch): void {
+  const why = m.endReason ? describeEnd(m.endReason, m.lastWinner === 'you') : '';
+  const gone = !m.room || !m.opponentConnected;
+  const [mine, theirs] = m.rematch;
+  const rematch = gone ? (m.endReason === 'left' ? '' : 'Your opponent has gone.') : mine ? 'Waiting for your opponent to accept…' : theirs ? `${m.names[1]} wants a rematch!` : '';
+  $('result-detail').textContent = [why, rematch].filter(Boolean).join(' ');
+  $<HTMLButtonElement>('retry').disabled = gone || mine;
+}
+
+function onlineStatus(m: OnlineMatch): string | null {
+  if (!m.connected) return 'Connection lost, reconnecting…';
+  if (!m.opponentConnected && m.phase !== 'matchEnd') return `${m.names[1]} lost connection, waiting for them…`;
+  if (m.phase === 'playing' && m.local?.game.over) return 'Waiting for the server…';
+  return null;
+}
+
+function drawOnline(m: OnlineMatch, now: number): void {
+  const games = m.games;
+  let countdown: string | null = null;
+  if (m.phase === 'countdown') {
+    const left = m.playStart - now;
+    const step = COUNTDOWN.length - Math.ceil(left / COUNTDOWN_STEP_MS);
+    countdown = COUNTDOWN[Math.max(0, Math.min(COUNTDOWN.length - 1, step))];
+  }
+  // Nothing to show behind the lobby yet.
+  renderer.setLayout(games ? 'versus' : 'solo');
+  if (!games) return renderer.draw(null, { goalLines: SPRINT_LINES, countdown: null, popup: null });
+  renderer.drawVersus({ players: games }, {
+    countdown,
+    popups,
+    characters,
+    score: m.score,
+    roundsToWin: m.roundsToWin,
+    banner,
+    names: [m.names[0].toUpperCase(), m.names[1].toUpperCase()],
+    status: onlineStatus(m),
+  });
+}
+
 // ---- simulation -----------------------------------------------------------
 
 function stepSprint(): void {
@@ -325,6 +459,20 @@ function describeClear(info: ClearInfo): string[] {
 function frame(now: number): void {
   const elapsed = now - lastFrame;
   lastFrame = now;
+  if (mode === 'online' && online) {
+    const m = online;
+    m.update(now, () => {
+      const events = [...pendingOnlineStart, ...soloKeys.take()];
+      pendingOnlineStart = [];
+      return events;
+    });
+    // The server starts the next round; only the end of the match needs a screen.
+    if (screen === 'roundEnd' && m.phase === 'matchEnd' && now - roundEndAt >= ROUND_END_MS) showOnlineResult(m);
+    if (screen === 'result') refreshOnlineResult(m);
+    drawOnline(m, now);
+    requestAnimationFrame(frame);
+    return;
+  }
   let countdown: string | null = null;
 
   if (screen === 'countdown') {
@@ -361,6 +509,12 @@ function frame(now: number): void {
 const inGame = () => screen === 'playing' || screen === 'countdown' || screen === 'roundEnd';
 
 addEventListener('keydown', (e) => {
+  // Typing a name or a room code: only Enter and Esc mean anything there.
+  if (e.target instanceof HTMLInputElement) {
+    if (e.code === 'Enter' && e.target.id === 'room-code') joinByCode();
+    if (e.code === 'Escape') e.target.blur();
+    return;
+  }
   // R restarts a sprint only: in versus it sits next to the left player's keys.
   if (e.code === 'KeyR' && mode === 'sprint' && (inGame() || screen === 'result')) {
     e.preventDefault();
@@ -369,6 +523,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     e.preventDefault();
     if (screen === 'settings') return closeSettings();
+    if (mode === 'online') leaveOnline();
     if (screen !== 'menu') return show('menu');
   }
   if (e.code === 'Enter' && screen === 'menu') return startSprint();
@@ -405,7 +560,24 @@ for (const id of LEVEL_IDS) {
   levelButtons.append(b);
 }
 $('retry').addEventListener('click', retry);
-$('to-menu').addEventListener('click', () => show('menu'));
+$('to-menu').addEventListener('click', () => {
+  if (mode === 'online') leaveOnline();
+  show('menu');
+});
+$('online-quick').addEventListener('click', () => startOnline({ kind: 'quick' }));
+$('online-create').addEventListener('click', () => startOnline({ kind: 'create' }));
+$('online-join').addEventListener('click', joinByCode);
+$('lobby-cancel').addEventListener('click', () => {
+  leaveOnline();
+  show('menu');
+});
+$<HTMLInputElement>('player-name').value = loadName();
+
+function joinByCode(): void {
+  const code = $<HTMLInputElement>('room-code').value.trim().toUpperCase();
+  if (code.length !== 5) return void $('room-code').focus();
+  startOnline({ kind: 'join', code });
+}
 $('open-settings').addEventListener('click', openSettings);
 $('close-settings').addEventListener('click', closeSettings);
 $('reset-settings').addEventListener('click', () => {
@@ -459,5 +631,5 @@ requestAnimationFrame(frame);
 
 // Dev builds only: a handle for poking at the game from the browser console.
 if (import.meta.env.DEV) {
-  Object.assign(window, { lineBattle: { get match() { return match; }, get bot() { return bot; }, characters } });
+  Object.assign(window, { lineBattle: { get match() { return match; }, get bot() { return bot; }, get online() { return online; }, characters } });
 }

@@ -4,6 +4,8 @@ A browser falling-block versus game in TypeScript. Phase 1 built the engine
 core and a single-player **40 Lines Sprint**. Phase 2 adds damage, garbage and
 **local versus**: two players on one keyboard, first to 2 rounds. Phase 3 adds a
 bot with 5 difficulty levels: **Versus bot** and the **Gauntlet** (beat all 5 in a row).
+Phase 4 adds **online 1v1**: quick match or a private room with a code, on a
+Colyseus match server that checks every input.
 
 ## Run it
 
@@ -12,10 +14,19 @@ You need Node.js 20 or newer.
 ```bash
 npm install
 npm run dev        # opens the game at http://localhost:5173
-npm test           # engine unit tests (Vitest)
-npm run typecheck  # TypeScript checks for both packages
+npm run server     # the online match server on port 2567 (second terminal)
+npm test           # unit tests (Vitest)
+npm run typecheck  # TypeScript checks for every package
 npm run build      # production build in packages/web/dist
 ```
+
+To try online play on one PC, run `npm run dev` and `npm run server`, open
+http://localhost:5173 in two browser windows, click **Create room** in one and
+type the code into the other (or click **Quick match** in both). Other PCs on
+your network can join at `http://<your PC's IP>:5173` (start Vite with
+`npm run dev -w @line-battle/web -- --host`); the client looks for the server on the same host,
+port 2567. Set `VITE_SERVER_URL` (for example `wss://play.example.com`) when
+the server lives somewhere else.
 
 ## Controls
 
@@ -30,7 +41,7 @@ npm run build      # production build in packages/web/dist
 | Hold | C or Shift |
 | Restart / menu | R / Esc |
 
-Versus bot and the gauntlet use the same keys as the sprint (R does not restart).
+Versus bot, the gauntlet and online matches use the same keys as the sprint (R does not restart).
 
 Local versus:
 
@@ -69,6 +80,12 @@ packages/
     src/levels.ts      the 5 difficulty levels
     src/controller.ts  turns a plan into key taps at the level's speed
     test/              Vitest tests, including bot-vs-bot matches
+  server/   the online match server (Node.js + Colyseus)
+    src/referee.ts     replays each player's inputs with the engine; routes attacks; rejects cheats
+    src/BattleRoom.ts  one 1v1 match: rooms, rounds, score, reconnects, rematch
+    src/main.ts        starts the server (PORT, HOST from the environment), /health
+    build.mjs          bundles everything into dist/main.mjs for Docker
+    test/              referee tests with bots over a fake laggy network, room tests over real sockets
   web/      Vite + Canvas 2D client
     src/main.ts       screens, 60 Hz fixed-step loop, sprint and versus flow
     src/render.ts     canvas drawing, one board or two side by side
@@ -76,7 +93,12 @@ packages/
     src/input.ts      keyboard bindings (sprint, player 1, player 2)
     src/bot-worker.ts the bot's search in a Web Worker, so it never stalls rendering
     src/bot-client.ts talks to the worker (falls back to the main thread if workers fail)
+    src/online.ts     online matches: your board locally, the opponent's from relayed inputs
 ```
+
+`engine/src/netplay.ts` holds what the client and server share for online
+play: the message types, `OnlinePlayer` (your side) and `StreamPlayer` (a board
+driven by someone else's inputs).
 
 ## How the engine works
 
@@ -151,3 +173,45 @@ For each piece it:
 
 Levels and weights live in `packages/bot/src/levels.ts`, so tuning a level is
 a one-line change. In bot-vs-bot tests every level beats the one below it.
+
+## Online play (phase 4)
+
+There is no lockstep and no input delay: each player's browser runs only its
+own board, and the server referees.
+
+1. Two players meet in a room: **Quick match** pairs whoever is waiting, a
+   **private room** gets a 5-letter code (no 0/O or 1/I) to share. The server
+   picks a fresh seed each round and sends it to both, then a 3-2-1 countdown.
+2. Each browser plays its own board at 60 ticks per second and sends its key
+   presses, tagged with tick numbers, every 3 ticks (50 ms).
+3. The server replays those inputs with the same engine, so it knows the true
+   board, clears and attacks. A modified client can't fake damage.
+4. Attacks are sent to the opponent as garbage with an id. Their browser lets it
+   in before its next tick and reports that tick, so the server's copy stays
+   exact. The 20-tick garbage delay hides most of the network lag.
+5. The opponent's board on your screen is rebuilt from their inputs as the
+   server relays them, roughly a ping behind real time.
+
+The server ends the match against a player whose inputs are impossible:
+malformed or out of order, running faster than real time (more than 0.5 s
+ahead of the server's clock), garbage not let in within 2 s, or more than 30
+pieces in a second. A player whose inputs stop for 10 s forfeits. A dropped
+connection reconnects automatically within 10 s and resends whatever the
+server missed; otherwise that player forfeits. After a match, both players can
+ask for a rematch.
+
+**Docker.** The server image builds from the repo root:
+
+```bash
+docker build -t line-battle-server .
+docker run -p 2567:2567 line-battle-server
+curl http://localhost:2567/health   # ok
+```
+
+Settings come from environment variables (`PORT`, default 2567; `HOST`,
+default 0.0.0.0), so the same image runs on Hetzner, Fly.io or AWS. For
+testing lag locally, `COLYSEUS_LATENCY=200 npm run server` adds 200 ms of
+round trip.
+
+Not built yet: accounts, ranked rating and the matchmaker's region and skill
+matching (phase 5), ping display, and margin time.

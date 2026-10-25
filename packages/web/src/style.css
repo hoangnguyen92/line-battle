@@ -91,3 +91,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .segmented button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
 .segmented button:last-child { border-radius: 0 8px 8px 0; }
 .segmented button.selected { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; position: relative; }
+
+.online-pick { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+.online-pick input {
+  font: inherit;
+  color: var(--text);
+  background: #11131d;
+  border: 1px solid #343852;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+#player-name { width: 130px; }
+#room-code { width: 80px; text-transform: uppercase; letter-spacing: 0.15em; text-align: center; }
+#lobby-code { letter-spacing: 0.2em; user-select: all; }

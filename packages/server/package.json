@@ -1,0 +1,26 @@
+{
+  "name": "@line-battle/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "node build.mjs",
+    "serve": "node dist/main.mjs"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.18.10",
+    "@colyseus/ws-transport": "^0.18.4",
+    "@line-battle/engine": "0.1.0"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "^0.18.6",
+    "@line-battle/bot": "0.1.0",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0"
+  }
+}

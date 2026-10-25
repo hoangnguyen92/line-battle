@@ -5,7 +5,6 @@ import {
   TICK_RATE,
   VISIBLE_HEIGHT,
   type Game,
-  type Match,
   type PieceType,
 } from '@line-battle/engine';
 import { shade, type CharacterView } from './character';
@@ -70,6 +69,8 @@ export interface VersusHud {
   banner: string | null;
   /** Shown above each board. */
   names: [string, string];
+  /** Small line at the top, e.g. "Opponent reconnecting...". */
+  status?: string | null;
 }
 
 export function formatTime(ticks: number): string {
@@ -127,7 +128,7 @@ export class Renderer {
   }
 
   /** Two boards side by side, each with its garbage meter and character. */
-  drawVersus(match: Match, hud: VersusHud): void {
+  drawVersus(match: { readonly players: readonly [Game, Game] }, hud: VersusHud): void {
     const c = this.ctx;
     const now = performance.now();
     c.clearRect(0, 0, this.width, CANVAS_H);
@@ -139,7 +140,7 @@ export class Renderer {
       this.drawWell();
       this.drawStack(game);
       this.drawActive(game);
-      this.drawGarbageMeter(game, match.tick);
+      this.drawGarbageMeter(game);
       this.drawHold(game);
       this.drawQueue(game);
       this.drawVersusStats(game, i, hud);
@@ -150,13 +151,26 @@ export class Renderer {
       c.restore();
     });
     if (hud.banner) this.drawBanner(hud.banner);
+    if (hud.status) this.drawStatus(hud.status);
+  }
+
+  private drawStatus(text: string): void {
+    const c = this.ctx;
+    c.font = `700 15px ${FONT}`;
+    c.textAlign = 'center';
+    const w = c.measureText(text).width + 28;
+    c.fillStyle = 'rgba(7,8,13,0.8)';
+    c.fillRect(this.width / 2 - w / 2, 6, w, 26);
+    c.fillStyle = '#ffd166';
+    c.fillText(text, this.width / 2, 24);
   }
 
   /**
    * Red bar beside the board for garbage that can rise now, orange for
    * garbage still in its delay (the window to cancel it).
    */
-  private drawGarbageMeter(game: Game, tick: number): void {
+  private drawGarbageMeter(game: Game): void {
+    const tick = game.tick;
     const c = this.ctx;
     const bottom = BOARD_Y + VISIBLE_HEIGHT * CELL;
     c.fillStyle = '#151724';
