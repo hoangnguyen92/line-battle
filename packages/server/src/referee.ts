@@ -1,4 +1,4 @@
-import { decodeKey, Game, KEYS, TICK_RATE, type Handling, type InputBatch, type KeyEvent, type PlayerIndex, type RelayBatch } from '@line-battle/engine';
+import { decodeKey, Game, garbageSeed, KEYS, TICK_RATE, type Handling, type InputBatch, type KeyEvent, type PlayerIndex, type RelayBatch } from '@line-battle/engine';
 
 /** How far a client's tick may run ahead of the server's clock (a speed hack check). */
 export const LEAD_SLACK_TICKS = 30;
@@ -38,8 +38,8 @@ class PlayerSim {
   readonly pending: Pending[] = [];
   private lockTicks: number[] = [];
 
-  constructor(seed: number, handling: Handling) {
-    this.game = new Game({ seed, handling });
+  constructor(seed: number, handling: Handling, player: PlayerIndex) {
+    this.game = new Game({ seed, handling, garbageSeed: garbageSeed(seed, player) });
   }
 
   /** Notes a lock; false when more than MAX_PIECES_PER_SECOND locked within one second. */
@@ -86,7 +86,7 @@ export class RoundReferee {
   private nextGarbageId = 1;
 
   constructor(readonly seed: number, handling: [Handling, Handling]) {
-    this.sims = [new PlayerSim(seed, handling[0]), new PlayerSim(seed, handling[1])];
+    this.sims = [new PlayerSim(seed, handling[0], 0), new PlayerSim(seed, handling[1], 1)];
   }
 
   game(p: PlayerIndex): Game {

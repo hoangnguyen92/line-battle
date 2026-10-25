@@ -49,6 +49,18 @@ export interface GameConfig {
   garbageCap?: number;
   /** Percent chance that a new attack's hole is in a different column. Default 30. */
   garbageMessiness?: number;
+  /** Seeds where garbage holes go. Default: derived from `seed` (see garbageSeed). */
+  garbageSeed?: number;
+}
+
+/**
+ * The garbage hole seed for a board. In a match each player gets their own
+ * (`player` 0 or 1), so the two boards share pieces but not holes; `null` is
+ * the single shared sequence that solo games and older replays use.
+ */
+export function garbageSeed(seed: number, player: 0 | 1 | null): number {
+  const shared = (seed ^ 0x5bd1e995) >>> 0;
+  return player === null ? shared : (shared ^ Math.imul(player + 1, 0x9e3779b9)) >>> 0;
 }
 
 /** Garbage waiting to rise: one entry per received attack. */
@@ -177,10 +189,11 @@ export class Game {
       garbageDelay: 20,
       garbageCap: 8,
       garbageMessiness: 30,
+      garbageSeed: garbageSeed(config.seed, null),
       ...config,
     };
     this.bag = new Bag(config.seed);
-    this.garbageRng = new Rng(config.seed ^ 0x5bd1e995);
+    this.garbageRng = new Rng(this.config.garbageSeed);
     this.spawn(this.takeNext());
   }
 

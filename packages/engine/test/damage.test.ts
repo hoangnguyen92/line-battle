@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attackFor, comboBonus, GARBAGE_CELL, KEYS, Match, MatchRecorder, playMatchReplay, Rng, type GameEvent, type KeyEvent } from '../src';
+import { attackFor, comboBonus, GARBAGE_CELL, KEYS, Match, MatchRecorder, playMatchReplay, Rng, type GameEvent, type MatchConfig, type KeyEvent } from '../src';
 import { newGame, setRows, stepN, tap } from './helpers';
 
 const clear = (lines: number, extra: Partial<Parameters<typeof attackFor>[0]> = {}) =>
@@ -144,6 +144,21 @@ describe('match', () => {
       m.step([[{ key: 'hardDrop', down: i % 2 === 0 }], []]);
     }
     expect(m.result).toBe(1);
+  });
+
+  it('gives each player the same pieces but their own garbage holes', () => {
+    const holesOf = (config: MatchConfig) => {
+      const m = new Match(config);
+      for (const g of m.players) for (let i = 0; i < 12; i++) g.receiveGarbage(1);
+      expect(m.players[0].queue).toEqual(m.players[1].queue);
+      return m.players.map((g) => g.incoming.map((x) => x.hole).join());
+    };
+    const players: MatchConfig['players'] = [{ garbageMessiness: 100 }, { garbageMessiness: 100 }];
+    const [a, b] = holesOf({ seed: 9, players });
+    expect(a).not.toBe(b);
+    // Version 1 replays were recorded with both boards sharing holes.
+    const [c, d] = holesOf({ seed: 9, players, sharedGarbage: true });
+    expect(c).toBe(d);
   });
 
   it('replays a round exactly', () => {

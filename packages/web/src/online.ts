@@ -269,8 +269,8 @@ export class OnlineMatch {
   private startRound(round: number, seed: number, countdownMs: number): void {
     const [mine, theirs] = this.handling!;
     this.round = round;
-    this.local = new OnlinePlayer(seed, mine);
-    this.mirror = new StreamPlayer(seed, theirs);
+    this.local = new OnlinePlayer(seed, mine, this.you);
+    this.mirror = new StreamPlayer(seed, theirs, (1 - this.you) as 0 | 1);
     this.countdownMs = countdownMs;
     this.playStart = performance.now() + countdownMs;
     this.lastWinner = null;
@@ -288,13 +288,13 @@ export class OnlineMatch {
       this.local.resendFrom(r.logs[this.you].upTo);
     } else {
       this.round = r.round;
-      this.local = new OnlinePlayer(r.seed, mine, r.logs[this.you]);
+      this.local = new OnlinePlayer(r.seed, mine, this.you, r.logs[this.you]);
       this.playStart = performance.now() - r.elapsedMs;
       this.setPhase(r.elapsedMs < 0 ? 'countdown' : 'playing');
     }
     for (const g of r.pending) this.local.receive(g);
     // The opponent's view is simply rebuilt from their whole stream.
-    this.mirror = new StreamPlayer(r.seed, theirs);
+    this.mirror = new StreamPlayer(r.seed, theirs, other);
     this.mirror.push(r.logs[other]);
     this.mirror.game.drainEvents();
   }

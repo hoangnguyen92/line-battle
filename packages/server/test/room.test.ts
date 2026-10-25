@@ -112,7 +112,7 @@ class Player {
 
   private startRound(r: ServerMessages['round']): void {
     this.stop();
-    const local = new OnlinePlayer(r.seed, DEFAULT_HANDLING);
+    const local = new OnlinePlayer(r.seed, DEFAULT_HANDLING, this.got.match!.at(-1)!.you);
     this.local = local;
     const start = Date.now() + r.countdownMs;
     this.timer = setInterval(() => {

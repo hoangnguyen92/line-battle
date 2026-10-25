@@ -1,5 +1,6 @@
-import { DEFAULT_HANDLING, Game, KEYS, SDF_INSTANT, type Handling, type Key, type KeyEvent } from './game';
+import { DEFAULT_HANDLING, Game, garbageSeed, KEYS, SDF_INSTANT, type Handling, type Key, type KeyEvent } from './game';
 import type { Look } from './cosmetics';
+import type { PlayerIndex } from './match';
 import type { PublicRating, RatingChange } from './lobby';
 
 /**
@@ -60,8 +61,9 @@ export class StreamPlayer {
   private keys: [number, number, number][] = [];
   private acks: [number, number][] = [];
 
-  constructor(seed: number, handling: Handling) {
-    this.game = new Game({ seed, handling });
+  /** `player` is whose board this is (it picks the garbage holes); null for the old shared holes. */
+  constructor(seed: number, handling: Handling, player: PlayerIndex | null) {
+    this.game = new Game({ seed, handling, garbageSeed: garbageSeed(seed, player) });
   }
 
   /** Queues a batch and steps the game up to its end. */
@@ -98,15 +100,15 @@ export class OnlinePlayer {
   private sentUpTo = 0;
 
   /** `log` rebuilds the board after a page reload (the server's copy of this stream). */
-  constructor(seed: number, handling: Handling, log?: RelayBatch) {
+  constructor(seed: number, handling: Handling, player: PlayerIndex, log?: RelayBatch) {
     if (log) {
-      const rebuilt = new StreamPlayer(seed, handling);
+      const rebuilt = new StreamPlayer(seed, handling, player);
       rebuilt.push(log);
       this.game = rebuilt.game;
       this.game.drainEvents();
       this.sentUpTo = log.upTo;
     } else {
-      this.game = new Game({ seed, handling });
+      this.game = new Game({ seed, handling, garbageSeed: garbageSeed(seed, player) });
     }
   }
 

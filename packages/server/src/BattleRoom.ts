@@ -260,7 +260,7 @@ export class BattleRoom extends Room {
         reason,
         // Rejected inputs void the match (the plan's anti-cheat rule); a forfeit still counts.
         rated: reason !== 'invalid',
-        replay: { version: 1, kind: 'online', mode: this.mode, names, handling: [a.handling, b.handling], rounds: this.rounds, score, winner, reason },
+        replay: { version: 2, kind: 'online', mode: this.mode, names, handling: [a.handling, b.handling], rounds: this.rounds, score, winner, reason },
       });
       this.broadcastAll('saved', { matchId });
       if (changes) {

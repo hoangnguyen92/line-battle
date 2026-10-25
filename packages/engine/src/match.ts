@@ -1,4 +1,4 @@
-import { Game, type GameConfig, type GameEvent, type KeyEvent } from './game';
+import { Game, garbageSeed, type GameConfig, type GameEvent, type KeyEvent } from './game';
 import type { ReplayInput } from './replay';
 
 export type PlayerIndex = 0 | 1;
@@ -8,6 +8,8 @@ export interface MatchConfig {
   seed: number;
   /** Per-player settings such as handling; the seed always comes from the match. */
   players?: [Partial<GameConfig>, Partial<GameConfig>];
+  /** Both boards get the same garbage holes, as before replay version 2. */
+  sharedGarbage?: boolean;
 }
 
 /**
@@ -24,7 +26,11 @@ export class Match {
 
   constructor(readonly config: MatchConfig) {
     const [a, b] = config.players ?? [{}, {}];
-    this.players = [new Game({ ...a, seed: config.seed }), new Game({ ...b, seed: config.seed })];
+    const holes = (p: PlayerIndex) => garbageSeed(config.seed, config.sharedGarbage ? null : p);
+    this.players = [
+      new Game({ ...a, seed: config.seed, garbageSeed: holes(0) }),
+      new Game({ ...b, seed: config.seed, garbageSeed: holes(1) }),
+    ];
   }
 
   get over(): boolean {
@@ -59,7 +65,8 @@ export class Match {
 }
 
 export interface MatchReplay {
-  version: 1;
+  /** 2 since each player got their own garbage holes. */
+  version: 1 | 2;
   kind: 'match';
   config: MatchConfig;
   inputs: [ReplayInput[], ReplayInput[]];
@@ -77,13 +84,13 @@ export class MatchRecorder {
   }
 
   finish(ticks: number): MatchReplay {
-    return { version: 1, kind: 'match', config: this.config, inputs: [[...this.inputs[0]], [...this.inputs[1]]], ticks };
+    return { version: 2, kind: 'match', config: this.config, inputs: [[...this.inputs[0]], [...this.inputs[1]]], ticks };
   }
 }
 
 /** Re-runs a recorded round from scratch and returns the finished match. */
 export function playMatchReplay(replay: MatchReplay): Match {
-  const match = new Match(replay.config);
+  const match = new Match(replay.version === 1 ? { ...replay.config, sharedGarbage: true } : replay.config);
   const next = [0, 0];
   while (match.tick < replay.ticks && !match.over) {
     const batch = ([0, 1] as const).map((p) => {
