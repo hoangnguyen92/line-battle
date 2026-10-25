@@ -1,0 +1,21 @@
+# The game page, plus the match server behind the same address, so players
+# only need port 80 (and 443 with a domain). SITE_ADDRESS is ":80" for a bare
+# IP address; set it to a domain (e.g. play.example.com) and Caddy gets HTTPS
+# by itself.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Matchmaking requests and game connections go to the match server.
+	@game {
+		path /matchmake/*
+	}
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @game server:2567
+	reverse_proxy @websocket server:2567
+
+	root * /srv
+	file_server
+}

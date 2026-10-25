@@ -13,9 +13,16 @@ import {
   type ServerMessages,
 } from '@line-battle/engine';
 
-/** Where the match server is. Set VITE_SERVER_URL for a real deployment. */
+const WS = location.protocol === 'https:' ? 'wss' : 'ws';
+const configuredServer: string = import.meta.env.VITE_SERVER_URL || '';
+
+/**
+ * Where the match server is. By default the same host on port 2567 (dev);
+ * VITE_SERVER_URL can name another one, or be "/" when a web server in front
+ * forwards the game's traffic from the page's own address (the Docker setup).
+ */
 export const SERVER_URL: string =
-  import.meta.env.VITE_SERVER_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
+  configuredServer === '/' ? `${WS}://${location.host}` : configuredServer || `${WS}://${location.hostname}:2567`;
 
 const TICK_MS = 1000 / TICK_RATE;
 /** Send a batch at least this often (3 ticks = 50 ms). */

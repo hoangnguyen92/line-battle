@@ -1,0 +1,21 @@
+# The whole game on one machine: Caddy serves the page on port 80 and passes
+# the game's traffic to the match server, which isn't exposed on its own.
+#   docker compose up -d --build
+# With a domain pointed at the machine, set SITE_ADDRESS (e.g. in a .env file)
+# to it and open port 443 too: Caddy then gets an HTTPS certificate itself.
+services:
+  server:
+    build: { context: ., target: server }
+    restart: unless-stopped
+
+  web:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes: [caddy-data:/data]
+    depends_on: [server]
+
+volumes:
+  caddy-data:

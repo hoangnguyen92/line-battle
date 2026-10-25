@@ -200,7 +200,10 @@ connection reconnects automatically within 10 s and resends whatever the
 server missed; otherwise that player forfeits. After a match, both players can
 ask for a rematch.
 
-**Docker.** The server image builds from the repo root:
+**Docker.** `docker compose up -d --build` runs the whole game on one machine:
+Caddy serves the page on port 80 and forwards the game's traffic to the match
+server. `docs/deploy-hetzner.md` walks through putting it on a Hetzner server.
+The match server image alone builds from the repo root:
 
 ```bash
 docker build -t line-battle-server .
