@@ -3,7 +3,7 @@
 #   docker build --target web -t line-battle-web .    the game page, served by Caddy
 # docker-compose.yml runs both together.
 
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 # Manifests first, so dependencies stay cached until they change.
 COPY package.json package-lock.json tsconfig.base.json ./
@@ -23,11 +23,15 @@ FROM caddy:2-alpine AS web
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/packages/web/dist /srv
 
-FROM node:22-alpine AS server
+FROM node:24-alpine AS server
 WORKDIR /app
-ENV NODE_ENV=production PORT=2567 HOST=0.0.0.0
+ENV NODE_ENV=production PORT=2567 HOST=0.0.0.0 DB_PATH=/data/line-battle.db
 COPY --from=build /app/packages/server/dist/main.mjs ./main.mjs
+# Accounts, ratings and match history: mount a volume here so they survive updates.
+RUN mkdir /data && chown node:node /data
+VOLUME /data
 USER node
 EXPOSE 2567
 HEALTHCHECK --interval=15s --timeout=3s CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
-CMD ["node", "main.mjs"]
+# node:sqlite still prints an "experimental" warning on every start; it works fine.
+CMD ["node", "--disable-warning=ExperimentalWarning", "main.mjs"]

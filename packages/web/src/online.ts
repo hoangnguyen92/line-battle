@@ -2,6 +2,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import {
   BATTLE_ROOM,
   OnlinePlayer,
+  QUEUE_ROOM,
   StreamPlayer,
   TICK_RATE,
   type EndReason,
@@ -10,6 +11,12 @@ import {
   type Handling,
   type JoinOptions,
   type KeyEvent,
+  type MatchMode,
+  type PublicRating,
+  type QueueJoinOptions,
+  type QueueMessages,
+  type RatingChange,
+  type Region,
   type ServerMessages,
 } from '@line-battle/engine';
 
@@ -30,7 +37,7 @@ const SEND_EVERY_TICKS = 3;
 /** Catch up quickly after a hitch or a reconnect, but not in one giant frame. */
 const MAX_STEPS_PER_FRAME = 30;
 
-export type OnlinePhase = 'connecting' | 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'matchEnd' | 'closed';
+export type OnlinePhase = 'connecting' | 'queued' | 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'matchEnd' | 'closed';
 
 /** What the screen code needs to hear about. */
 export interface OnlineEvents {
@@ -40,7 +47,15 @@ export interface OnlineEvents {
   error(message: string): void;
 }
 
-export type JoinKind = { kind: 'quick' } | { kind: 'create' } | { kind: 'join'; code: string };
+export type JoinKind = { kind: 'quick' } | { kind: 'ranked' } | { kind: 'create' } | { kind: 'join'; code: string };
+
+/** Who is joining: the account's session (if signed in) and where they play from. */
+export interface JoinAs {
+  name: string;
+  handling: Handling;
+  region: Region;
+  token: string | null;
+}
 
 export function describeEnd(reason: EndReason, youWon: boolean): string {
   switch (reason) {
@@ -77,20 +92,32 @@ export class OnlineMatch {
   rematch: [boolean, boolean] = [false, false];
   connected = true;
   opponentConnected = true;
+  mode: MatchMode = 'quick';
+  /** [you, opponent] ratings at the start, when both have accounts. */
+  ratings: [PublicRating, PublicRating] | null = null;
+  canRematch = true;
+  /** Your rating change, once a ranked match is over. */
+  ratingChange: RatingChange | null = null;
+  /** Set once the server has saved the match. */
+  matchId: number | null = null;
+  /** The latest word from the queue while searching. */
+  search: QueueMessages['searching'] | null = null;
+  /** Set while in, or after, the matchmaking queue. */
+  queueKind: 'quick' | 'ranked' | null = null;
 
   private handling: [Handling, Handling] | null = null;
   private left = false;
+  private queue: Room | null = null;
 
   constructor(private events: OnlineEvents) {}
 
-  async join(how: JoinKind, name: string, handling: Handling): Promise<void> {
+  async join(how: JoinKind, as: JoinAs): Promise<void> {
     const client = new Client(SERVER_URL);
-    const opts = (mode: JoinOptions['mode']): JoinOptions => ({ mode, name, handling });
+    if (as.token) client.auth.token = as.token;
+    if (how.kind === 'quick' || how.kind === 'ranked') return this.enqueue(client, how.kind, as);
+    const opts: JoinOptions = { mode: 'private', name: as.name, handling: as.handling };
     try {
-      const room =
-        how.kind === 'quick' ? await client.joinOrCreate(BATTLE_ROOM, opts('quick'))
-        : how.kind === 'create' ? await client.create(BATTLE_ROOM, opts('private'))
-        : await client.joinById(how.code.trim().toUpperCase(), opts('private'));
+      const room = how.kind === 'create' ? await client.create(BATTLE_ROOM, opts) : await client.joinById(how.code.trim().toUpperCase(), opts);
       if (this.left) return void room.leave(true);
       this.attach(room);
     } catch (e) {
@@ -101,15 +128,59 @@ export class OnlineMatch {
     }
   }
 
-  /** Leaves the room; mid-match this forfeits. */
+  /** Waits in the matchmaking queue, then joins the match it finds. */
+  private async enqueue(client: Client, kind: 'quick' | 'ranked', as: JoinAs): Promise<void> {
+    this.queueKind = kind;
+    const opts: QueueJoinOptions = { queue: kind, region: as.region, name: as.name, handling: as.handling };
+    let queue: Room;
+    try {
+      queue = await client.joinOrCreate(QUEUE_ROOM, opts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.setPhase('closed');
+      this.events.error(/log in/i.test(msg) ? 'Log in to play ranked.' : `Can't reach the match server (${SERVER_URL}). Is it running?`);
+      return;
+    }
+    if (this.left) return void queue.leave(true);
+    this.queue = queue;
+    let matched = false;
+    queue.onMessage('searching', (s: QueueMessages['searching']) => {
+      this.search = s;
+      if (this.phase === 'connecting') this.setPhase('queued');
+    });
+    queue.onMessage('matched', async ({ reservation }: QueueMessages['matched']) => {
+      matched = true;
+      try {
+        const room = await client.consumeSeatReservation(reservation as never);
+        // Attach before anything else: the match's first messages follow the join at once.
+        if (this.left) void room.leave(true);
+        else this.attach(room);
+      } catch {
+        this.setPhase('closed');
+        this.events.error('The match could not start. Try again.');
+      }
+      this.queue = null;
+      void queue.leave(true);
+    });
+    queue.onLeave((code: number) => {
+      if (matched || this.left) return;
+      this.queue = null;
+      this.setPhase('closed');
+      this.events.error(code === 4000 ? 'You joined the queue from another tab.' : 'Lost the connection to the match server.');
+    });
+  }
+
+  /** Leaves the queue or the room; mid-match this forfeits. */
   leave(): void {
     this.left = true;
+    void this.queue?.leave(true);
+    this.queue = null;
     void this.room?.leave(true);
     this.room = null;
   }
 
   askRematch(): void {
-    this.room?.send('rematch');
+    if (this.canRematch) this.room?.send('rematch');
   }
 
   /** Both boards, [you, opponent]. */
@@ -159,7 +230,12 @@ export class OnlineMatch {
       this.handling = [m.handling[m.you], m.handling[other]];
       this.score = [m.score[m.you], m.score[other]];
       this.roundsToWin = m.roundsToWin;
+      this.mode = m.mode;
+      this.ratings = m.ratings ? [m.ratings[m.you], m.ratings[other]] : null;
+      this.canRematch = m.canRematch;
     });
+    on('rating', (r) => (this.ratingChange = r));
+    on('saved', ({ matchId }) => (this.matchId = matchId));
     on('round', (r) => this.startRound(r.round, r.seed, r.countdownMs));
     on('garbage', (g) => this.local?.receive(g));
     on('opp', (batch) => {
@@ -193,6 +269,7 @@ export class OnlineMatch {
     this.lastWinner = null;
     this.endReason = null;
     this.rematch = [false, false];
+    if (round === 1) this.matchId = null;
     this.setPhase('countdown');
   }
 

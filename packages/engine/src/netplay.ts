@@ -1,4 +1,5 @@
 import { DEFAULT_HANDLING, Game, KEYS, SDF_INSTANT, type Handling, type Key, type KeyEvent } from './game';
+import type { PublicRating, RatingChange } from './lobby';
 
 /**
  * Online play: each client simulates only its own board and streams what it
@@ -168,6 +169,12 @@ export interface ServerMessages {
     handling: [Handling, Handling];
     roundsToWin: number;
     score: [number, number];
+    /** 'ranked' and 'quick' matches come from the queue; 'private' from a room code. */
+    mode: MatchMode;
+    /** Both players' ratings, when both have accounts. */
+    ratings: [PublicRating, PublicRating] | null;
+    /** Ranked matches have no rematch: queue again for a fresh opponent. */
+    canRematch: boolean;
   };
   /** A round starts after the countdown. Both boards use `seed`. */
   round: { round: number; seed: number; countdownMs: number };
@@ -180,16 +187,27 @@ export interface ServerMessages {
   oppStatus: { connected: boolean };
   roundEnd: { winner: 0 | 1 | null; score: [number, number]; reason: EndReason };
   matchEnd: { winner: 0 | 1 | null; score: [number, number]; reason: EndReason };
+  /** After a ranked match, to each player with their own change. */
+  rating: RatingChange;
+  /** The match was saved: its replay can be fetched from /api/matches/:id/replay. */
+  saved: { matchId: number };
   /** Who has asked for a rematch so far. */
   rematch: { requested: [boolean, boolean] };
 }
 
-/** Options a client passes when it joins a room. */
+export type MatchMode = 'ranked' | 'quick' | 'private';
+
+/**
+ * Options a client passes when it creates or joins a private room. Queued
+ * matches are joined through a seat reservation from the queue instead.
+ */
 export interface JoinOptions {
-  mode: 'quick' | 'private';
+  mode: 'private';
   name: string;
   handling: Handling;
 }
 
 /** Rooms are named this on the server. */
 export const BATTLE_ROOM = 'battle';
+/** The matchmaking queue's room. */
+export const QUEUE_ROOM = 'queue';

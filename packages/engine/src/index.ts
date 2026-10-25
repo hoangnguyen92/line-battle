@@ -2,6 +2,7 @@ export * from './attack';
 export * from './board';
 export * from './bag';
 export * from './game';
+export * from './lobby';
 export * from './match';
 export * from './netplay';
 export * from './pieces';

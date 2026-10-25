@@ -13,6 +13,12 @@
       <section id="menu" class="overlay">
         <h1>Line Battle</h1>
         <p class="tagline">Clear lines, build combos, bury your opponent.</p>
+        <div class="account-bar">
+          <span id="account-status">Playing as a guest</span>
+          <button id="open-account" class="link">Log in or sign up</button>
+          <button id="open-profile" class="link hidden">Profile and leaderboard</button>
+          <button id="log-out" class="link hidden">Log out</button>
+        </div>
         <div class="row">
           <button id="start" class="primary">40 Lines Sprint</button>
           <button id="start-bot" class="primary">Versus bot</button>
@@ -22,10 +28,12 @@
         <div class="online-pick">
           <span>Online 1v1</span>
           <input id="player-name" type="text" maxlength="16" placeholder="Your name" aria-label="Your name" />
+          <button id="online-ranked" class="primary" title="Rated matches against players near your rating. Needs an account.">Ranked</button>
           <button id="online-quick" class="primary">Quick match</button>
           <button id="online-create">Create room</button>
           <input id="room-code" type="text" maxlength="5" placeholder="CODE" aria-label="Room code" />
           <button id="online-join">Join</button>
+          <select id="region" aria-label="Your region" title="Matchmaking pairs players in the same region first."></select>
         </div>
         <div class="bot-pick">
           <span>Bot level</span>
@@ -57,7 +65,7 @@
           <tr><td>Menu</td><td colspan="2">Esc</td></tr>
         </table>
         </div>
-        <p class="hint wide">Online matches are first to 2 rounds and use the sprint keys. Create a room and send its code to a friend, or use quick match to play whoever is waiting. The gauntlet runs through all 5 bots from Beginner to Expert; lose a match and the run ends. Every match is first to 2 rounds. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
+        <p class="hint wide">Online matches are first to 2 rounds and use the sprint keys. Ranked and quick match pair you with a player near your rating, in your region first. Ranked moves your rating and needs an account. Create a room and send its code to a friend to play them directly. The gauntlet runs through all 5 bots from Beginner to Expert; lose a match and the run ends. Every match is first to 2 rounds. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
       </section>
 
       <section id="settings" class="overlay hidden">
@@ -78,6 +86,42 @@
         </div>
       </section>
 
+      <section id="account" class="overlay hidden">
+        <h2>Your account</h2>
+        <form id="account-form">
+          <label>Name
+            <input id="account-name" type="text" maxlength="16" autocomplete="username" required />
+          </label>
+          <label>Password
+            <input id="account-password" type="password" maxlength="128" autocomplete="current-password" required />
+          </label>
+          <p id="account-error" class="error" role="alert"></p>
+          <div class="row">
+            <button id="log-in" type="submit" class="primary">Log in</button>
+            <button id="sign-up" type="button">Create account</button>
+            <button id="close-account" type="button">Back (Esc)</button>
+          </div>
+        </form>
+        <p class="hint">An account keeps your rating, match history and handling settings on every device. Ranked play needs one. Names are 3-16 letters or digits; passwords at least 8 characters.</p>
+      </section>
+
+      <section id="profile" class="overlay hidden">
+        <h2 id="profile-name"></h2>
+        <p id="profile-rating" class="big"></p>
+        <p id="profile-detail" class="hint wide"></p>
+        <div class="row tables">
+          <div>
+            <h3>Recent matches</h3>
+            <table id="profile-matches" class="history"></table>
+          </div>
+          <div>
+            <h3>Leaderboard</h3>
+            <table id="leaderboard" class="history"></table>
+          </div>
+        </div>
+        <button id="close-profile">Back (Esc)</button>
+      </section>
+
       <section id="lobby" class="overlay hidden">
         <h2 id="lobby-title">Connecting…</h2>
         <p id="lobby-code" class="big hidden"></p>
@@ -89,6 +133,7 @@
         <h2 id="result-title"></h2>
         <p id="result-time" class="big"></p>
         <p id="result-detail"></p>
+        <p id="result-rating" class="rating-change hidden"></p>
         <div class="row">
           <button id="retry" class="primary">Retry (R)</button>
           <button id="to-menu">Menu (Esc)</button>

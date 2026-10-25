@@ -70,6 +70,15 @@ and send them the code, or both click **Quick match**.
 Repeat step 4 (the `docker compose up -d --build` rebuilds only what changed).
 Logs: `docker compose logs -f server`.
 
+Accounts, ratings and match history live in the `game-data` Docker volume, so
+rebuilds and restarts keep them. `docker compose down -v` deletes volumes:
+don't use `-v` unless you mean to wipe every account. To take a backup:
+
+```bash
+docker compose exec server node -e "new (require('node:sqlite').DatabaseSync)('/data/line-battle.db').exec(\"VACUUM INTO '/data/backup.db'\")"
+docker compose cp server:/data/backup.db ./line-battle-backup.db
+```
+
 ## Later: a domain and HTTPS
 
 Point a domain's DNS A record at the server's IP, then on the server create

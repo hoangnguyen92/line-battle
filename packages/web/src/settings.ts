@@ -1,5 +1,5 @@
 import type { LevelId } from '@line-battle/bot';
-import { DEFAULT_HANDLING, type Handling } from '@line-battle/engine';
+import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, type Handling, type Region } from '@line-battle/engine';
 
 const HANDLING_KEY = 'lineBattle.handling';
 const SPRINT_BEST_KEY = 'lineBattle.sprintBestTicks';
@@ -73,4 +73,21 @@ export function loadName(): string {
 
 export function saveName(name: string): void {
   write(NAME_KEY, name);
+}
+
+const REGION_KEY = 'lineBattle.region';
+
+/** Where you play from, for matchmaking; first guessed from the browser's time zone. */
+export function loadRegion(): Region {
+  const saved = read(REGION_KEY);
+  if (isRegion(saved)) return saved;
+  try {
+    return regionFromTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return 'asia';
+  }
+}
+
+export function saveRegion(region: Region): void {
+  write(REGION_KEY, region);
 }

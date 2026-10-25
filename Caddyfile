@@ -5,9 +5,9 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
-	# Matchmaking requests and game connections go to the match server.
+	# Matchmaking requests, the account API and game connections go to the match server.
 	@game {
-		path /matchmake/*
+		path /matchmake/* /api/*
 	}
 	@websocket {
 		header Connection *Upgrade*

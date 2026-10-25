@@ -5,11 +5,13 @@ core and a single-player **40 Lines Sprint**. Phase 2 adds damage, garbage and
 **local versus**: two players on one keyboard, first to 2 rounds. Phase 3 adds a
 bot with 5 difficulty levels: **Versus bot** and the **Gauntlet** (beat all 5 in a row).
 Phase 4 adds **online 1v1**: quick match or a private room with a code, on a
-Colyseus match server that checks every input.
+Colyseus match server that checks every input. Phase 5 adds **accounts**,
+**ranked** play with a Glicko-2 rating, a matchmaking queue by region and skill,
+match history, server-side replays and a leaderboard.
 
 ## Run it
 
-You need Node.js 20 or newer.
+You need Node.js 22.13 or newer (24 recommended): the server uses its built-in SQLite.
 
 ```bash
 npm install
@@ -22,7 +24,9 @@ npm run build      # production build in packages/web/dist
 
 To try online play on one PC, run `npm run dev` and `npm run server`, open
 http://localhost:5173 in two browser windows, click **Create room** in one and
-type the code into the other (or click **Quick match** in both). Other PCs on
+type the code into the other (or click **Quick match** in both). For ranked,
+the two windows need different accounts, so open one at http://localhost:5173
+and the other at http://127.0.0.1:5173 (each address keeps its own login). Other PCs on
 your network can join at `http://<your PC's IP>:5173` (start Vite with
 `npm run dev -w @line-battle/web -- --host`); the client looks for the server on the same host,
 port 2567. Set `VITE_SERVER_URL` (for example `wss://play.example.com`) when
@@ -82,8 +86,12 @@ packages/
     test/              Vitest tests, including bot-vs-bot matches
   server/   the online match server (Node.js + Colyseus)
     src/referee.ts     replays each player's inputs with the engine; routes attacks; rejects cheats
-    src/BattleRoom.ts  one 1v1 match: rooms, rounds, score, reconnects, rematch
-    src/main.ts        starts the server (PORT, HOST from the environment), /health
+    src/BattleRoom.ts  one 1v1 match: rooms, rounds, score, reconnects, rematch, saving the result
+    src/QueueRoom.ts   the matchmaking queue: pairs by rating and region, then hands out seats
+    src/glicko.ts      Glicko-2 ratings
+    src/store.ts       accounts, sessions, ratings and match history in SQLite
+    src/api.ts         the HTTP API under /api (sign up, log in, settings, profiles, leaderboard, replays)
+    src/main.ts        starts the server (PORT, HOST, DB_PATH from the environment), /health
     build.mjs          bundles everything into dist/main.mjs for Docker
     test/              referee tests with bots over a fake laggy network, room tests over real sockets
   web/      Vite + Canvas 2D client
@@ -93,12 +101,14 @@ packages/
     src/input.ts      keyboard bindings (sprint, player 1, player 2)
     src/bot-worker.ts the bot's search in a Web Worker, so it never stalls rendering
     src/bot-client.ts talks to the worker (falls back to the main thread if workers fail)
-    src/online.ts     online matches: your board locally, the opponent's from relayed inputs
+    src/online.ts     online matches: the queue, your board locally, the opponent's from relayed inputs
+    src/account.ts    the signed-in account and the /api calls
 ```
 
 `engine/src/netplay.ts` holds what the client and server share for online
 play: the message types, `OnlinePlayer` (your side) and `StreamPlayer` (a board
-driven by someone else's inputs).
+driven by someone else's inputs). `engine/src/lobby.ts` holds the shared shapes
+for accounts, the queue and online replays.
 
 ## How the engine works
 
@@ -216,5 +226,51 @@ default 0.0.0.0), so the same image runs on Hetzner, Fly.io or AWS. For
 testing lag locally, `COLYSEUS_LATENCY=200 npm run server` adds 200 ms of
 round trip.
 
-Not built yet: accounts, ranked rating and the matchmaker's region and skill
-matching (phase 5), ping display, and margin time.
+## Accounts and ranked (phase 5)
+
+- **Accounts.** Sign up with a name (3-16 letters, digits, `_`, `-` or `.`,
+  case-insensitive) and a password of at least 8 characters. Passwords are
+  hashed with scrypt; the browser keeps a random session token, and the server
+  stores only its SHA-256. Sessions last 60 days from last use. Sign-up and
+  login allow 10 attempts per address per minute. Handling settings and region
+  sync to the account, and the account's settings win on login.
+- **Ranked** needs an account; quick match takes guests at 1500. Ranked
+  matches are first to 2 with no rematch (queue again for a fresh opponent).
+- **Glicko-2.** Everyone starts at 1500 ± 350. Each ranked match is its own
+  rating period, so the rating moves right after the match. A day away counts as
+  an idle period and widens the deviation again. A rating counts as settled
+  (and goes on the leaderboard) once its deviation is 110 or less. A forfeit
+  counts as a loss; a match where the server rejected someone's inputs is saved
+  but not rated, as the plan says.
+- **Matchmaking.** The queue pairs players within 100 rating points at first
+  (200 for quick match), widening by 15 (30) points a second. It looks in your
+  region first (Asia, Oceania, Europe and Africa, Americas; guessed from the
+  browser's time zone and changeable on the menu) and, once both players have
+  waited 20 s, anywhere. The queue then makes a match room and reserves both
+  seats, so nobody else can get in.
+- **History and replays.** Every online match with at least one signed-in
+  player is saved with both players' input streams. The profile screen lists
+  your recent matches with a download button for each replay, and
+  `playOnlineRound` in the engine replays any round exactly as the server
+  refereed it.
+
+The data lives in one SQLite file (`DB_PATH`, default `data/line-battle.db`;
+`/data/line-battle.db` on a Docker volume). That is plenty for one game server;
+`Store` is the seam for moving to PostgreSQL once there are several.
+
+API (JSON; send `Authorization: Bearer <token>` where signed in):
+
+| Request | What it does |
+| --- | --- |
+| `POST /api/signup` `{name, password, region?, handling?}` | Creates an account, returns `{token, me}` |
+| `POST /api/login` `{name, password}` | Returns `{token, me}` |
+| `POST /api/logout` | Ends this session |
+| `GET /api/me` | Your account, rating and settings |
+| `POST /api/me/settings` `{handling?, region?}` | Saves settings to the account |
+| `GET /api/me/matches` | Your last 20 online matches |
+| `GET /api/profile/:name` | A player's rating, record, rank and recent matches |
+| `GET /api/leaderboard` | Top 100 settled ratings |
+| `GET /api/matches/:id/replay` | A saved match's replay |
+
+Not built yet: ping display, margin time, and filling an empty quick match
+queue with a bot.

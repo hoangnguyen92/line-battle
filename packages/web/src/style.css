@@ -104,3 +104,27 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 #player-name { width: 130px; }
 #room-code { width: 80px; text-transform: uppercase; letter-spacing: 0.15em; text-align: center; }
 #lobby-code { letter-spacing: 0.2em; user-select: all; }
+
+.account-bar { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+#account-status strong { color: var(--text); }
+#account-form { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#account-form input, #region {
+  font: inherit;
+  color: var(--text);
+  background: #11131d;
+  border: 1px solid #343852;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.error { margin: 0; min-height: 1.2em; color: #ff8a80; font-size: 14px; max-width: 300px; }
+.rating-change { margin: 0; font-size: 18px; font-weight: 600; }
+.rating-change .up { color: #7ddc8a; }
+.rating-change .down { color: #ff8a80; }
+h3 { margin: 4px 0 6px; font-size: 15px; color: var(--muted); font-weight: 600; }
+.history { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.history td, .history th { padding: 3px 8px; text-align: left; }
+.history th { color: var(--muted); font-weight: 500; }
+.history .win { color: #7ddc8a; }
+.history .loss { color: #ff8a80; }
+.history button { padding: 2px 8px; font-size: 12px; }
+#profile .tables > div { max-height: 46vh; overflow-y: auto; }

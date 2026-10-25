@@ -12,8 +12,13 @@ import {
   type KeyEvent,
   type MatchConfig,
   type MatchReplay,
+  type MatchSummary,
+  type Region,
+  REGION_NAMES,
+  REGIONS,
   type Replay,
 } from '@line-battle/engine';
+import { Account, ApiError } from './account';
 import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@line-battle/bot';
 import { BotWorker } from './bot-client';
 import { CharacterView } from './character';
@@ -26,11 +31,13 @@ import {
   loadGauntletBest,
   loadHandling,
   loadName,
+  loadRegion,
   saveBestTicks,
   saveBotLevel,
   saveGauntletBest,
   saveHandling,
   saveName,
+  saveRegion,
 } from './settings';
 
 const SPRINT_LINES = 40;
@@ -46,7 +53,7 @@ const MAX_CATCH_UP = 8;
 /** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
 type Mode = 'sprint' | 'versus' | 'bot' | 'online';
 /** 'lobby' covers connecting, waiting for an opponent and connection errors. */
-type Screen = 'menu' | 'settings' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
+type Screen = 'menu' | 'settings' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -90,6 +97,8 @@ let gauntlet = false;
 // Online state
 let online: OnlineMatch | null = null;
 let pendingOnlineStart: KeyEvent[] = [];
+const account = new Account();
+let region: Region = loadRegion();
 
 // ---- screens --------------------------------------------------------------
 
@@ -99,7 +108,10 @@ function show(next: Screen): void {
   $('settings').classList.toggle('hidden', next !== 'settings');
   $('result').classList.toggle('hidden', next !== 'result');
   $('lobby').classList.toggle('hidden', next !== 'lobby');
-  $('download-replay').classList.toggle('hidden', !lastReplay || mode === 'online');
+  $('account').classList.toggle('hidden', next !== 'account');
+  $('profile').classList.toggle('hidden', next !== 'profile');
+  $('download-replay').classList.toggle('hidden', mode === 'online' ? !online?.matchId : !lastReplay);
+  if (mode !== 'online') $('result-rating').classList.add('hidden');
   if (mode !== 'online') $<HTMLButtonElement>('retry').disabled = false;
   if (next === 'menu') refreshBest();
 }
@@ -175,7 +187,7 @@ function playerNames(): [string, string] {
 }
 
 function retry(): void {
-  if (mode === 'online') return online?.askRematch();
+  if (mode === 'online') return online && !online.canRematch ? startOnline({ kind: 'ranked' }) : online?.askRematch();
   if (mode === 'sprint') return startSprint();
   if (mode === 'versus') return startVersus();
   if (!gauntlet || !bot) return startBotMatch(bot?.level.id ?? botLevel, false);
@@ -298,9 +310,9 @@ function startOnline(how: JoinKind): void {
   bot = null;
   gauntlet = false;
   lastReplay = null;
-  const name = $<HTMLInputElement>('player-name').value.trim();
-  saveName(name);
-  lobby('Connecting…', how.kind === 'quick' ? 'Looking for an opponent.' : '');
+  const guestName = $<HTMLInputElement>('player-name').value.trim();
+  saveName(guestName);
+  lobby('Connecting…');
   const m = new OnlineMatch({
     phase: (p) => onOnlinePhase(m, p),
     gameEvents: (side, events) => {
@@ -318,7 +330,17 @@ function startOnline(how: JoinKind): void {
     },
   });
   online = m;
-  void m.join(how, name, { ...handling });
+  void m.join(how, { name: account.me?.name ?? guestName, handling: { ...handling }, region, token: account.token });
+}
+
+/** The lobby text while the queue searches. */
+function queueText(m: OnlineMatch): string {
+  const s = m.search;
+  if (!s) return '';
+  const secs = Math.floor(s.waitedMs / 1000);
+  const where = s.anyRegion ? 'any region' : REGION_NAMES[s.region];
+  const others = s.inQueue > 1 ? `${s.inQueue - 1} other ${s.inQueue === 2 ? 'player' : 'players'} searching` : 'nobody else searching yet';
+  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} · rating ${s.rating} ± ${s.range} · ${where} · ${others}`;
 }
 
 function leaveOnline(): void {
@@ -329,7 +351,9 @@ function leaveOnline(): void {
 function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
   if (online !== m) return;
   const now = performance.now();
-  if (phase === 'waiting') {
+  if (phase === 'queued') {
+    lobby(m.queueKind === 'ranked' ? 'Looking for a ranked opponent…' : 'Looking for an opponent…', queueText(m));
+  } else if (phase === 'waiting') {
     if (m.code) lobby('Room created', 'Send this code to a friend. The match starts when they join.', m.code);
     else lobby('Looking for an opponent…', 'Quick match pairs you with the next player who joins.');
   } else if (phase === 'countdown') {
@@ -356,15 +380,39 @@ function showOnlineResult(m: OnlineMatch): void {
   const youWon = m.lastWinner === 'you';
   $('result-title').textContent = youWon ? 'You win!' : `${m.names[1]} wins`;
   $('result-time').textContent = `${m.score[0]} – ${m.score[1]}`;
-  $('retry').textContent = 'Rematch (Enter)';
+  $('retry').textContent = m.canRematch ? 'Rematch (Enter)' : 'Play ranked again (Enter)';
   banner = null;
   refreshOnlineResult(m);
   show('result');
+  // The account bar shows the new rating.
+  if (m.mode === 'ranked') void account.refresh();
 }
 
 /** The result text under the score, kept up to date with rematch requests. */
 function refreshOnlineResult(m: OnlineMatch): void {
   const why = m.endReason ? describeEnd(m.endReason, m.lastWinner === 'you') : '';
+  $('download-replay').classList.toggle('hidden', !m.matchId);
+  const change = m.ratingChange;
+  const rating = $('result-rating');
+  rating.classList.toggle('hidden', !change);
+  if (change) {
+    const diff = change.after.rating - change.before.rating;
+    const key = `${change.before.rating}>${change.after.rating}`;
+    if (rating.dataset.key !== key) {
+      rating.dataset.key = key;
+      rating.innerHTML = '';
+      const delta = document.createElement('span');
+      delta.className = diff >= 0 ? 'up' : 'down';
+      delta.textContent = ` (${diff >= 0 ? '+' : ''}${diff})`;
+      rating.append(`Rating ${change.before.rating} → ${change.after.rating}`, delta);
+    }
+  }
+  if (!m.canRematch) {
+    // Ranked: no rematch, just a fresh search.
+    $('result-detail').textContent = why;
+    $<HTMLButtonElement>('retry').disabled = false;
+    return;
+  }
   const gone = !m.room || !m.opponentConnected;
   const [mine, theirs] = m.rematch;
   const rematch = gone ? (m.endReason === 'left' ? '' : 'Your opponent has gone.') : mine ? 'Waiting for your opponent to accept…' : theirs ? `${m.names[1]} wants a rematch!` : '';
@@ -397,7 +445,7 @@ function drawOnline(m: OnlineMatch, now: number): void {
     score: m.score,
     roundsToWin: m.roundsToWin,
     banner,
-    names: [m.names[0].toUpperCase(), m.names[1].toUpperCase()],
+    names: [0, 1].map((i) => m.names[i].toUpperCase() + (m.ratings ? ` · ${m.ratings[i].rating}` : '')) as [string, string],
     status: onlineStatus(m),
   });
 }
@@ -469,6 +517,7 @@ function frame(now: number): void {
     // The server starts the next round; only the end of the match needs a screen.
     if (screen === 'roundEnd' && m.phase === 'matchEnd' && now - roundEndAt >= ROUND_END_MS) showOnlineResult(m);
     if (screen === 'result') refreshOnlineResult(m);
+    if (screen === 'lobby' && m.phase === 'queued') $('lobby-detail').textContent = queueText(m);
     drawOnline(m, now);
     requestAnimationFrame(frame);
     return;
@@ -523,6 +572,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     e.preventDefault();
     if (screen === 'settings') return closeSettings();
+    if (screen === 'account' || screen === 'profile') return show('menu');
     if (mode === 'online') leaveOnline();
     if (screen !== 'menu') return show('menu');
   }
@@ -565,6 +615,10 @@ $('to-menu').addEventListener('click', () => {
   show('menu');
 });
 $('online-quick').addEventListener('click', () => startOnline({ kind: 'quick' }));
+$('online-ranked').addEventListener('click', () => {
+  if (!account.signedIn) return openAccount('Log in or create an account to play ranked.');
+  startOnline({ kind: 'ranked' });
+});
 $('online-create').addEventListener('click', () => startOnline({ kind: 'create' }));
 $('online-join').addEventListener('click', joinByCode);
 $('lobby-cancel').addEventListener('click', () => {
@@ -584,14 +638,30 @@ $('reset-settings').addEventListener('click', () => {
   handling = { ...DEFAULT_HANDLING };
   syncSettingsForm();
 });
-$('download-replay').addEventListener('click', () => {
-  if (!lastReplay) return;
-  const blob = new Blob([JSON.stringify(lastReplay)], { type: 'application/json' });
+function download(data: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `line-battle-${mode}-${Date.now()}.json`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** Online replays live on the server; fetch one and save it. */
+async function downloadOnlineReplay(matchId: number): Promise<void> {
+  try {
+    download(await account.replay(matchId), `line-battle-online-${matchId}.json`);
+  } catch (e) {
+    alert(e instanceof Error ? e.message : String(e));
+  }
+}
+
+$('download-replay').addEventListener('click', () => {
+  if (mode === 'online') {
+    if (online?.matchId) void downloadOnlineReplay(online.matchId);
+    return;
+  }
+  if (lastReplay) download(lastReplay, `line-battle-${mode}-${Date.now()}.json`);
 });
 
 const sliders = { das: $<HTMLInputElement>('das'), arr: $<HTMLInputElement>('arr'), sdf: $<HTMLInputElement>('sdf') };
@@ -623,8 +693,157 @@ function openSettings(): void {
 
 function closeSettings(): void {
   saveHandling(handling);
+  void account.saveSettings({ handling });
   show('menu');
 }
+
+// ---- accounts and profiles ------------------------------------------------
+
+const regionSelect = $<HTMLSelectElement>('region');
+for (const r of REGIONS) regionSelect.append(new Option(REGION_NAMES[r], r));
+
+function setRegion(next: Region): void {
+  region = next;
+  regionSelect.value = next;
+  saveRegion(next);
+}
+setRegion(region);
+regionSelect.addEventListener('change', () => {
+  setRegion(regionSelect.value as Region);
+  void account.saveSettings({ region });
+});
+
+function refreshAccountBar(): void {
+  const me = account.me;
+  const status = $('account-status');
+  status.textContent = '';
+  if (me) {
+    const strong = document.createElement('strong');
+    strong.textContent = me.name;
+    const r = me.rating;
+    status.append('Signed in as ', strong, ` · rating ${r.rating}${r.settled ? '' : ` ± ${r.rd}`}`);
+  } else {
+    status.textContent = 'Playing as a guest';
+  }
+  $('open-account').classList.toggle('hidden', !!me);
+  $('open-profile').classList.toggle('hidden', !me);
+  $('log-out').classList.toggle('hidden', !me);
+  // Signed in, your account name is used online.
+  $('player-name').classList.toggle('hidden', !!me);
+}
+
+account.onChange(refreshAccountBar);
+
+/** After signing in, the account's settings win over this browser's. */
+function adoptAccountSettings(): void {
+  const me = account.me;
+  if (!me) return;
+  if (me.handling) {
+    handling = { ...me.handling };
+    saveHandling(handling);
+  }
+  setRegion(me.region);
+}
+
+function openAccount(message = ''): void {
+  $('account-error').textContent = message;
+  show('account');
+  $<HTMLInputElement>('account-name').focus();
+}
+
+async function submitAccount(kind: 'login' | 'signup'): Promise<void> {
+  const name = $<HTMLInputElement>('account-name').value.trim();
+  const password = $<HTMLInputElement>('account-password').value;
+  const error = $('account-error');
+  const buttons = [$<HTMLButtonElement>('log-in'), $<HTMLButtonElement>('sign-up')];
+  if (!name || !password) return void (error.textContent = 'Enter a name and a password.');
+  buttons.forEach((b) => (b.disabled = true));
+  error.textContent = '';
+  try {
+    if (kind === 'signup') await account.signUp(name, password, region, handling);
+    else await account.logIn(name, password);
+    adoptAccountSettings();
+    $<HTMLInputElement>('account-password').value = '';
+    show('menu');
+  } catch (e) {
+    error.textContent = e instanceof ApiError ? e.message : 'Something went wrong. Try again.';
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+$('open-account').addEventListener('click', () => openAccount());
+$('close-account').addEventListener('click', () => show('menu'));
+$('account-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  void submitAccount('login');
+});
+$('sign-up').addEventListener('click', () => void submitAccount('signup'));
+$('log-out').addEventListener('click', () => void account.logOut());
+$('open-profile').addEventListener('click', () => void openProfile());
+$('close-profile').addEventListener('click', () => show('menu'));
+
+function cell(row: HTMLTableRowElement, text: string, className = ''): HTMLTableCellElement {
+  const td = row.insertCell();
+  td.textContent = text;
+  if (className) td.className = className;
+  return td;
+}
+
+function matchRow(table: HTMLTableElement, m: MatchSummary): void {
+  const row = table.insertRow();
+  const won = m.winner === m.side;
+  const opp = m.names[1 - m.side];
+  cell(row, won ? 'Win' : m.winner === null ? 'Void' : 'Loss', won ? 'win' : 'loss');
+  cell(row, `${m.score[m.side]}–${m.score[1 - m.side]}`);
+  cell(row, `vs ${opp}`);
+  cell(row, m.mode === 'ranked' ? 'Ranked' : m.mode === 'quick' ? 'Quick' : 'Room');
+  const r = m.ratings?.[m.side];
+  // A ranked match the server rejected inputs in doesn't count.
+  cell(row, r ? `${r[1]} (${r[1] - r[0] >= 0 ? '+' : ''}${r[1] - r[0]})` : m.mode === 'ranked' ? 'not rated' : '');
+  const replay = document.createElement('button');
+  replay.textContent = 'Replay';
+  replay.title = 'Download this match as a replay file';
+  replay.addEventListener('click', () => void downloadOnlineReplay(m.id));
+  row.insertCell().append(replay);
+}
+
+async function openProfile(): Promise<void> {
+  const me = account.me;
+  if (!me) return openAccount();
+  $('profile-name').textContent = me.name;
+  $('profile-rating').textContent = '…';
+  $('profile-detail').textContent = '';
+  const matches = $<HTMLTableElement>('profile-matches');
+  const board = $<HTMLTableElement>('leaderboard');
+  matches.innerHTML = '';
+  board.innerHTML = '';
+  show('profile');
+  try {
+    const [profile, leaders] = await Promise.all([account.profile(me.name), account.leaderboard()]);
+    const r = profile.rating;
+    $('profile-rating').textContent = r.settled ? String(r.rating) : `${r.rating} ± ${r.rd}`;
+    const losses = profile.games - profile.wins;
+    const place = profile.rank ? `#${profile.rank} on the leaderboard` : r.settled ? 'Not on the leaderboard yet' : 'Provisional rating: play more ranked matches to settle it';
+    $('profile-detail').textContent = `${profile.games} ranked ${profile.games === 1 ? 'match' : 'matches'} · ${profile.wins} won, ${losses} lost · ${REGION_NAMES[profile.region]} · ${place}`;
+    if (profile.recent.length === 0) cell(matches.insertRow(), 'No online matches yet.');
+    for (const m of profile.recent) matchRow(matches, m);
+    if (leaders.length === 0) cell(board.insertRow(), 'Nobody has a settled rating yet.');
+    for (const e of leaders) {
+      const row = board.insertRow();
+      cell(row, `#${e.rank}`);
+      cell(row, e.name, e.name === me.name ? 'win' : '');
+      cell(row, String(e.rating));
+      cell(row, REGION_NAMES[e.region]);
+    }
+  } catch (e) {
+    $('profile-rating').textContent = '';
+    $('profile-detail').textContent = e instanceof Error ? e.message : String(e);
+  }
+}
+
+void account.restore().then(adoptAccountSettings);
+refreshAccountBar();
 
 show('menu');
 requestAnimationFrame(frame);
