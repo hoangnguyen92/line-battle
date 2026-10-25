@@ -1,3 +1,4 @@
+import type { Look, Prefs } from './cosmetics';
 import type { Handling } from './game';
 import { StreamPlayer, type MatchMode, type RelayBatch } from './netplay';
 
@@ -50,6 +51,8 @@ export interface Me {
   name: string;
   region: Region;
   handling: Handling | null;
+  /** Looks, keys and sound; null until first saved from a browser. */
+  prefs: Prefs | null;
   rating: PublicRating;
   games: number;
   wins: number;
@@ -104,6 +107,7 @@ export interface QueueJoinOptions {
   /** Only for guests in quick match; an account's name comes from the account. */
   name: string;
   handling: Handling;
+  look: Look;
 }
 
 /** Queue server to client messages. */

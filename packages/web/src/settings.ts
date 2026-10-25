@@ -1,5 +1,5 @@
 import type { LevelId } from '@line-battle/bot';
-import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, type Handling, type Region } from '@line-battle/engine';
+import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, sanitizePrefs, type Handling, type Prefs, type Region } from '@line-battle/engine';
 
 const HANDLING_KEY = 'lineBattle.handling';
 const SPRINT_BEST_KEY = 'lineBattle.sprintBestTicks';
@@ -90,4 +90,19 @@ export function loadRegion(): Region {
 
 export function saveRegion(region: Region): void {
   write(REGION_KEY, region);
+}
+
+const PREFS_KEY = 'lineBattle.prefs';
+
+/** Looks, keys and sound; the account's copy wins once signed in. */
+export function loadPrefs(): Prefs {
+  try {
+    return sanitizePrefs(JSON.parse(read(PREFS_KEY) ?? 'null'));
+  } catch {
+    return sanitizePrefs(null);
+  }
+}
+
+export function savePrefs(p: Prefs): void {
+  write(PREFS_KEY, JSON.stringify(p));
 }

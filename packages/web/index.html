@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Line Battle</title>
+    <meta name="description" content="Line Battle: a free falling-block versus game in your browser. Clear lines, build combos and bury your opponent, against bots or online." />
+    <meta name="theme-color" content="#0e0f16" />
+    <meta property="og:title" content="Line Battle" />
+    <meta property="og:description" content="Clear lines, build combos, bury your opponent. Free in your browser." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -20,6 +26,7 @@
           <button id="log-out" class="link hidden">Log out</button>
         </div>
         <div class="row">
+          <button id="start-tutorial">How to play</button>
           <button id="start" class="primary">40 Lines Sprint</button>
           <button id="start-bot" class="primary">Versus bot</button>
           <button id="start-gauntlet" class="primary">Gauntlet</button>
@@ -40,19 +47,13 @@
           <div id="bot-levels" class="segmented"></div>
         </div>
         <p class="best">Sprint best: <span id="best">none yet</span> · Gauntlet: <span id="gauntlet-best">not started</span></p>
-        <button id="open-settings">Handling settings</button>
+        <div class="row">
+          <button id="open-customize">Character and skins</button>
+          <button id="open-controls">Controls</button>
+          <button id="open-settings">Handling</button>
+        </div>
         <div class="row tables">
-        <table class="controls">
-          <tr><th colspan="2">Sprint and versus bot</th></tr>
-          <tr><td>Move</td><td>&larr; &rarr;</td></tr>
-          <tr><td>Soft drop</td><td>&darr;</td></tr>
-          <tr><td>Hard drop</td><td>Space</td></tr>
-          <tr><td>Rotate clockwise</td><td>&uarr; or X</td></tr>
-          <tr><td>Rotate counter-clockwise</td><td>Z or Ctrl</td></tr>
-          <tr><td>Rotate 180</td><td>A</td></tr>
-          <tr><td>Hold</td><td>C or Shift</td></tr>
-          <tr><td>Restart / menu</td><td>R / Esc</td></tr>
-        </table>
+        <table id="solo-controls" class="controls"></table>
         <table class="controls">
           <tr><th>Versus</th><th>Player 1</th><th>Player 2</th></tr>
           <tr><td>Move</td><td>A D</td><td>&larr; &rarr;</td></tr>
@@ -84,6 +85,43 @@
           <button id="reset-settings">Defaults</button>
           <button id="close-settings" class="primary">Done</button>
         </div>
+      </section>
+
+      <section id="customize" class="overlay hidden">
+        <h2>Character and skins</h2>
+        <h3>Character</h3>
+        <div id="character-pick" class="pick-grid"></div>
+        <h3>Block skin</h3>
+        <div id="skin-pick" class="pick-grid"></div>
+        <h3>Board theme</h3>
+        <div id="theme-pick" class="segmented"></div>
+        <label class="check"><input id="plain-opponent" type="checkbox" /> Show the opponent's board in the default skin</label>
+        <label>Sound volume <output id="volume-out"></output>
+          <input id="volume" type="range" min="0" max="100" step="5" />
+        </label>
+        <p class="hint wide">Looks never change how the game plays. Your opponent sees your character and skin online.</p>
+        <button id="close-customize" class="primary">Done (Esc)</button>
+      </section>
+
+      <section id="controls" class="overlay hidden">
+        <h2>Controls</h2>
+        <table id="keymap" class="keymap"></table>
+        <p id="keymap-hint" class="hint wide">Click + to add a key, or a key to remove it. Each action can have up to 3 keys. Esc, Enter, Tab and R are kept for the menus.</p>
+        <div class="row">
+          <button id="reset-keys">Defaults</button>
+          <button id="close-controls" class="primary">Done</button>
+        </div>
+      </section>
+
+      <section id="tutorial-tip" class="tip hidden" aria-live="polite">
+        <p id="tutorial-step" class="step"></p>
+        <h2 id="tutorial-title"></h2>
+        <p id="tutorial-text"></p>
+        <div id="tutorial-end" class="row hidden">
+          <button id="tutorial-bot" class="primary">Play the Beginner bot</button>
+          <button id="tutorial-menu">Menu</button>
+        </div>
+        <button id="tutorial-skip" class="link">Skip the tutorial (Esc)</button>
       </section>
 
       <section id="account" class="overlay hidden">

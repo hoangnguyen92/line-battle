@@ -1,13 +1,14 @@
 import {
   BOARD_WIDTH,
+  CELL_ID,
   PIECE_CELLS,
-  PIECE_TYPES,
   TICK_RATE,
   VISIBLE_HEIGHT,
   type Game,
   type PieceType,
 } from '@line-battle/engine';
-import { shade, type CharacterView } from './character';
+import type { CharacterView } from './character';
+import { drawCell, PIECE_COLORS, skinSheet, THEME_COLORS, type SkinSheet, type Theme } from './skins';
 
 const CELL = 30;
 const MINI = 20;
@@ -31,18 +32,6 @@ export type Layout = 'solo' | 'versus';
 
 export const PLAYER_COLORS = ['#3fc1b0', '#f08a5d'] as const;
 
-const COLORS: Record<PieceType, string> = {
-  I: '#35c8de',
-  J: '#4069e6',
-  L: '#ee8a2f',
-  O: '#eecb3a',
-  S: '#5ccb4a',
-  T: '#a650e0',
-  Z: '#e64a55',
-};
-const GARBAGE_COLOR = '#6b6f82';
-// Indexed by board cell value: 0 empty, 1-7 pieces (CELL_ID order), 8 garbage.
-const CELL_COLORS = ['', ...PIECE_TYPES.map((t) => COLORS[t]), GARBAGE_COLOR];
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
@@ -84,11 +73,24 @@ export function formatTime(ticks: number): string {
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private layout: Layout = 'solo';
+  private theme: Theme = THEME_COLORS.night;
+  /** Block skin for each side: [you or player 1, opponent or player 2]. */
+  private sheets: [SkinSheet, SkinSheet] = [skinSheet('gem'), skinSheet('gem')];
+  /** The sheet for the side being drawn right now. */
+  private sheet: SkinSheet = this.sheets[0];
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
     this.resize();
     addEventListener('resize', () => this.resize());
+  }
+
+  setTheme(theme: Theme): void {
+    this.theme = theme;
+  }
+
+  setSkins(sheets: [SkinSheet, SkinSheet]): void {
+    this.sheets = sheets;
   }
 
   setLayout(layout: Layout): void {
@@ -116,6 +118,7 @@ export class Renderer {
   draw(game: Game | null, hud: HudState): void {
     const c = this.ctx;
     c.clearRect(0, 0, this.width, CANVAS_H);
+    this.sheet = this.sheets[0];
     this.drawWell();
     if (!game) return;
     this.drawStack(game);
@@ -137,6 +140,7 @@ export class Renderer {
       const [sx, sy] = character.shake(now);
       c.save();
       c.translate(i * (VIEW_W + VERSUS_GAP) + sx, sy);
+      this.sheet = this.sheets[i];
       this.drawWell();
       this.drawStack(game);
       this.drawActive(game);
@@ -145,13 +149,31 @@ export class Renderer {
       this.drawQueue(game);
       this.drawVersusStats(game, i, hud);
       this.drawPopup(hud.popups[i]);
-      this.panel(QUEUE_X, CHAR_Y, SIDE_W, CHAR_H);
+      this.drawStage();
       character.draw(c, QUEUE_X, CHAR_Y, SIDE_W, CHAR_H, now);
       if (hud.countdown) this.drawCenterText(hud.countdown);
       c.restore();
     });
     if (hud.banner) this.drawBanner(hud.banner);
     if (hud.status) this.drawStatus(hud.status);
+  }
+
+  /** The character's little stage under the next queue. */
+  private drawStage(): void {
+    const c = this.ctx;
+    const [top, bottom] = this.theme.stage;
+    const g = c.createLinearGradient(0, CHAR_Y, 0, CHAR_Y + CHAR_H);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    c.fillStyle = g;
+    c.strokeStyle = this.theme.panelBorder;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.roundRect(QUEUE_X + 0.5, CHAR_Y + 0.5, SIDE_W, CHAR_H, 8);
+    c.fill();
+    c.stroke();
+    c.fillStyle = 'rgba(0,0,0,0.18)';
+    c.fillRect(QUEUE_X + 1, CHAR_Y + CHAR_H - 14, SIDE_W - 1, 14);
   }
 
   private drawStatus(text: string): void {
@@ -173,7 +195,7 @@ export class Renderer {
     const tick = game.tick;
     const c = this.ctx;
     const bottom = BOARD_Y + VISIBLE_HEIGHT * CELL;
-    c.fillStyle = '#151724';
+    c.fillStyle = this.theme.panel;
     c.fillRect(METER_X, BOARD_Y, METER_W, VISIBLE_HEIGHT * CELL);
     let y = bottom;
     for (const g of game.incoming) {
@@ -199,7 +221,7 @@ export class Renderer {
     for (let r = 0; r < hud.roundsToWin; r++) {
       c.beginPath();
       c.arc(pipsX + r * 16, BOARD_Y - 45, 5, 0, Math.PI * 2);
-      c.fillStyle = r < hud.score[player] ? color : '#2b2f45';
+      c.fillStyle = r < hud.score[player] ? color : this.theme.panelBorder;
       c.fill();
     }
 
@@ -212,7 +234,7 @@ export class Renderer {
     ];
     for (const [name, value] of rows) {
       this.label(name, right, y, 'right');
-      c.fillStyle = '#e8e9f1';
+      c.fillStyle = this.theme.value;
       c.font = `700 20px ${FONT}`;
       c.textAlign = 'right';
       c.fillText(value, right, y + 24);
@@ -237,9 +259,9 @@ export class Renderer {
     const c = this.ctx;
     const w = BOARD_WIDTH * CELL;
     const h = VISIBLE_HEIGHT * CELL;
-    c.fillStyle = '#07080d';
+    c.fillStyle = this.theme.well;
     c.fillRect(BOARD_X, BOARD_Y, w, h);
-    c.strokeStyle = '#1a1c29';
+    c.strokeStyle = this.theme.grid;
     c.lineWidth = 1;
     c.beginPath();
     for (let x = 1; x < BOARD_WIDTH; x++) {
@@ -251,7 +273,7 @@ export class Renderer {
       c.lineTo(BOARD_X + w, BOARD_Y + y * CELL + 0.5);
     }
     c.stroke();
-    c.strokeStyle = '#3a3e57';
+    c.strokeStyle = this.theme.wellBorder;
     c.lineWidth = 2;
     c.beginPath();
     c.moveTo(BOARD_X - 1, BOARD_Y);
@@ -271,7 +293,7 @@ export class Renderer {
     for (let y = 0; y < top; y++) {
       for (let x = 0; x < BOARD_WIDTH; x++) {
         const v = game.board.get(x, y);
-        if (v) this.drawBlock(...this.cellPos(x, y), CELL, CELL_COLORS[v], game.toppedOut ? 0.45 : 1);
+        if (v) this.drawBlock(...this.cellPos(x, y), CELL, v, game.toppedOut ? 0.45 : 1);
       }
     }
   }
@@ -280,12 +302,13 @@ export class Renderer {
     const ghost = game.ghost();
     const p = game.active;
     if (!p || !ghost) return;
-    for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), COLORS[p.type]);
+    // The ghost keeps the standard look in every skin.
+    for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), PIECE_COLORS[p.type]);
     const c = this.ctx;
     c.save();
-    c.shadowColor = COLORS[p.type];
+    c.shadowColor = PIECE_COLORS[p.type];
     c.shadowBlur = 14;
-    for (const [x, y] of game.pieceCells(p)) this.drawBlock(...this.cellPos(x, y), CELL, COLORS[p.type]);
+    for (const [x, y] of game.pieceCells(p)) this.drawBlock(...this.cellPos(x, y), CELL, CELL_ID[p.type]);
     c.restore();
   }
 
@@ -305,53 +328,12 @@ export class Renderer {
     c.restore();
   }
 
-  /** A glossy, bevelled gem-style block. */
-  private drawBlock(x: number, y: number, size: number, color: string, alpha = 1): void {
+  /** Cell `index` (1-7 pieces, 8 garbage) from the current side's skin. */
+  private drawBlock(x: number, y: number, size: number, index: number, alpha = 1): void {
     const c = this.ctx;
-    const gap = size >= CELL ? 1 : 0.75;
-    const r = size * 0.16;
-    const bx = x + gap, by = y + gap, s = size - gap * 2;
-    c.save();
     c.globalAlpha = alpha;
-
-    // Body: light at the top, deep at the bottom.
-    const body = c.createLinearGradient(bx, by, bx, by + s);
-    body.addColorStop(0, shade(color, 0.25));
-    body.addColorStop(0.5, color);
-    body.addColorStop(1, shade(color, -0.35));
-    c.beginPath();
-    c.roundRect(bx, by, s, s, r);
-    c.fillStyle = body;
-    c.fill();
-    c.shadowBlur = 0;
-
-    // Raised inner face.
-    const inset = s * 0.16;
-    const face = c.createLinearGradient(bx, by + inset, bx, by + s - inset);
-    face.addColorStop(0, shade(color, 0.12));
-    face.addColorStop(1, shade(color, -0.12));
-    c.beginPath();
-    c.roundRect(bx + inset, by + inset, s - inset * 2, s - inset * 2, r * 0.6);
-    c.fillStyle = face;
-    c.fill();
-
-    // Gloss across the upper half.
-    const gloss = c.createLinearGradient(bx, by, bx, by + s * 0.55);
-    gloss.addColorStop(0, 'rgba(255,255,255,0.45)');
-    gloss.addColorStop(1, 'rgba(255,255,255,0)');
-    c.beginPath();
-    c.roundRect(bx + 1, by + 1, s - 2, s * 0.5, [r, r, r * 0.3, r * 0.3]);
-    c.fillStyle = gloss;
-    c.fill();
-
-    // Crisp dark rim so neighbouring blocks read as separate.
-    c.beginPath();
-    c.roundRect(bx + 0.5, by + 0.5, s - 1, s - 1, r);
-    c.strokeStyle = shade(color, -0.55);
-    c.globalAlpha = alpha * 0.8;
-    c.lineWidth = 1;
-    c.stroke();
-    c.restore();
+    drawCell(c, this.sheet, index, x, y, size);
+    c.globalAlpha = 1;
   }
 
   private drawMiniPiece(type: PieceType, cx: number, cy: number, dim = false): void {
@@ -363,13 +345,13 @@ export class Renderer {
     const ox = cx - ((maxX - minX + 1) * MINI) / 2;
     const oy = cy - ((maxY - minY + 1) * MINI) / 2;
     for (const [dx, dy] of cells) {
-      this.drawBlock(ox + (dx - minX) * MINI, oy + (-dy - minY) * MINI, MINI, dim ? '#4a4d5e' : COLORS[type]);
+      this.drawBlock(ox + (dx - minX) * MINI, oy + (-dy - minY) * MINI, MINI, dim ? 8 : CELL_ID[type], dim ? 0.5 : 1);
     }
   }
 
   private label(text: string, x: number, y: number, align: CanvasTextAlign = 'left'): void {
     const c = this.ctx;
-    c.fillStyle = '#8b8fa8';
+    c.fillStyle = this.theme.label;
     c.font = `600 13px ${FONT}`;
     c.textAlign = align;
     c.textBaseline = 'alphabetic';
@@ -378,8 +360,8 @@ export class Renderer {
 
   private panel(x: number, y: number, w: number, h: number): void {
     const c = this.ctx;
-    c.fillStyle = '#111320';
-    c.strokeStyle = '#262a3d';
+    c.fillStyle = this.theme.panel;
+    c.strokeStyle = this.theme.panelBorder;
     c.lineWidth = 1;
     c.beginPath();
     c.roundRect(x + 0.5, y + 0.5, w, h, 8);
@@ -411,13 +393,13 @@ export class Renderer {
     const seconds = game.tick / TICK_RATE;
     const pps = seconds > 0 ? game.piecesPlaced / seconds : 0;
     const rows: [string, string][] = [
-      ['LINES', `${Math.min(game.lines, hud.goalLines)}/${hud.goalLines}`],
+      ['LINES', hud.goalLines ? `${Math.min(game.lines, hud.goalLines)}/${hud.goalLines}` : String(game.lines)],
       ['PIECES', `${game.piecesPlaced}  ·  ${pps.toFixed(2)}/s`],
       ['TIME', formatTime(game.tick)],
     ];
     for (const [name, value] of rows) {
       this.label(name, right, y, 'right');
-      c.fillStyle = '#e8e9f1';
+      c.fillStyle = this.theme.value;
       c.font = `700 ${name === 'TIME' ? 30 : 22}px ${FONT}`;
       c.textAlign = 'right';
       c.fillText(value, right, y + (name === 'TIME' ? 34 : 28));
@@ -435,7 +417,7 @@ export class Renderer {
     const x = BOARD_X - 16;
     let y = BOARD_Y + 150;
     popup.lines.forEach((line, i) => {
-      c.fillStyle = i === 0 ? '#ffffff' : '#c9b8ff';
+      c.fillStyle = i === 0 ? this.theme.value : '#9d86ff';
       c.font = `800 ${i === 0 ? 22 : 16}px ${FONT}`;
       c.fillText(line, x, y);
       y += i === 0 ? 28 : 22;

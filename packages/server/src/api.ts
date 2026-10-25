@@ -5,6 +5,7 @@ import {
   MIN_PASSWORD,
   NAME_PATTERN,
   sanitizeHandling,
+  sanitizePrefs,
   type Me,
   type SessionResponse,
 } from '@line-battle/engine';
@@ -114,7 +115,10 @@ export class Api {
     const region = isRegion(body.region) ? body.region : 'asia';
     const user = this.store.createUser(name, await hashPassword(password), region);
     if (!user) return fail(409, 'That name is taken.');
-    if (body.handling) this.store.saveSettings(user.id, { handling: sanitizeHandling(body.handling) });
+    this.store.saveSettings(user.id, {
+      handling: body.handling ? sanitizeHandling(body.handling) : undefined,
+      prefs: body.prefs ? sanitizePrefs(body.prefs) : undefined,
+    });
     return ok(this.startSession(user.id), 201);
   }
 
@@ -139,6 +143,7 @@ export class Api {
     this.store.saveSettings(user.id, {
       handling: b.handling === undefined ? undefined : sanitizeHandling(b.handling),
       region: isRegion(b.region) ? b.region : undefined,
+      prefs: b.prefs === undefined ? undefined : sanitizePrefs(b.prefs),
     });
     return ok(this.store.me(this.store.userById(user.id)!));
   }
