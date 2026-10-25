@@ -1,11 +1,13 @@
 /**
- * Placeholder characters that stand beside each board and get hit by a falling
+ * The characters that stand beside each board and get hit by a falling
  * object when the opponent attacks. The object grows with the attack's lines
  * (before cancelling): apple, flowerpot, bowling ball, anvil, piano, cow, car.
- * Real art and animation replace these shapes in phase 6.
+ * The art lives in art.ts; this file is the animation.
  */
+import type { CharacterId } from '@line-battle/engine';
+import { characterImage, flatImage, objectImage, umbrellaImage, type Face, type HitObject } from './art';
 
-export type HitObject = 'apple' | 'flowerpot' | 'bowling' | 'anvil' | 'piano' | 'cow' | 'car';
+export type { HitObject } from './art';
 
 export function objectFor(lines: number): HitObject {
   if (lines <= 1) return 'apple';
@@ -38,22 +40,34 @@ interface ObjectStyle {
 }
 
 const STYLES: Record<HitObject, ObjectStyle> = {
-  apple: { size: 16, fall: 380, react: 500, squash: 0.92, shake: 0 },
-  flowerpot: { size: 22, fall: 380, react: 650, squash: 0.85, shake: 0 },
-  bowling: { size: 26, fall: 360, react: 900, squash: 1, shake: 0 },
-  anvil: { size: 36, fall: 340, react: 1000, squash: 0.3, shake: 1.5 },
-  piano: { size: 54, fall: 340, react: 1200, squash: 0.35, shake: 4 },
-  cow: { size: 60, fall: 340, react: 1300, squash: 0.25, shake: 6 },
-  car: { size: 80, fall: 900, react: 1800, squash: 0.15, shake: 8 },
+  apple: { size: 26, fall: 380, react: 500, squash: 0.92, shake: 0 },
+  flowerpot: { size: 34, fall: 380, react: 650, squash: 0.85, shake: 0 },
+  bowling: { size: 38, fall: 360, react: 900, squash: 1, shake: 0 },
+  anvil: { size: 54, fall: 340, react: 1000, squash: 0.3, shake: 1.5 },
+  piano: { size: 76, fall: 340, react: 1200, squash: 0.35, shake: 4 },
+  cow: { size: 84, fall: 340, react: 1300, squash: 0.25, shake: 6 },
+  car: { size: 112, fall: 900, react: 1800, squash: 0.15, shake: 8 },
 };
+
+/** How long an object takes to land, so the impact sound can wait for it. */
+export function fallMs(object: HitObject): number {
+  return STYLES[object].fall;
+}
+
+/** The character sprite's drawn size; its art is 100 x 120. */
+const SPRITE_W = 96;
+const SPRITE_H = 115;
+/** Floor to the top of the head. */
+const HEAD = 107;
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 export class CharacterView {
   private hit: Hit | null = null;
   private koAt: number | null = null;
+  private winAt: number | null = null;
 
-  constructor(readonly color: string) {}
+  constructor(public character: CharacterId) {}
 
   /** The opponent attacked with `raw` lines; `blocked` when all of it was cancelled. */
   addHit(raw: number, blocked: boolean, now: number): void {
@@ -65,9 +79,15 @@ export class CharacterView {
     this.koAt ??= now;
   }
 
+  /** The opponent topped out: a little victory jump. */
+  celebrate(now: number): void {
+    if (this.koAt === null) this.winAt ??= now;
+  }
+
   reset(): void {
     this.hit = null;
     this.koAt = null;
+    this.winAt = null;
   }
 
   /** Screen shake offset for this player's side right now. */
@@ -83,26 +103,29 @@ export class CharacterView {
 
   /** Draws the character standing on the floor of the box (x, y, w, h). */
   draw(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, now: number): void {
-    const floor = y + h - 14;
+    const floor = y + h - 10;
     const cx = x + w / 2;
     c.save();
     c.beginPath();
     c.rect(x, y, w, h);
     c.clip();
 
-    c.strokeStyle = '#2b2f45';
-    c.lineWidth = 2;
-    c.beginPath();
-    c.moveTo(x + 8, floor + 1);
-    c.lineTo(x + w - 8, floor + 1);
-    c.stroke();
-
     if (this.koAt !== null) {
-      this.drawFigure(c, cx, floor, { squash: 1, tilt: Math.min(1, (now - this.koAt) / 300) * (Math.PI / 2), ko: true });
-      c.fillStyle = '#ff6b7a';
-      c.font = `900 22px ${FONT}`;
-      c.textAlign = 'center';
-      c.fillText('K.O.', cx, y + 30);
+      const t = now - this.koAt;
+      // Topples over and lies flat; the feet slide right so the whole body stays on the stage.
+      const p = Math.min(1, t / 350);
+      this.drawFigure(c, cx + p * 52, floor - p * 24, { face: 'ko', squash: 1, tilt: p * (Math.PI / 2), lift: Math.sin(p * Math.PI) * 18 });
+      if (t < 1600) drawStars(c, cx - 30, floor - 50, t);
+      shout(c, 'K.O.', cx, y + 30, '#ff6b7a');
+      c.restore();
+      return;
+    }
+
+    if (this.winAt !== null) {
+      const t = now - this.winAt;
+      const jump = Math.abs(Math.sin(t / 180)) * 16;
+      this.drawFigure(c, cx, floor, { face: 'win', squash: 1, tilt: 0, lift: jump });
+      drawConfetti(c, x, y, w, t);
       c.restore();
       return;
     }
@@ -111,25 +134,29 @@ export class CharacterView {
     const style = hit ? STYLES[hit.object] : null;
     const t = hit ? now - hit.at : Infinity;
     if (!hit || !style || t > style.fall + style.react) {
-      this.drawFigure(c, cx, floor, { squash: 1, tilt: 0, blink: Math.floor(now / 2600) % 6 === 0 && now % 2600 < 140 });
+      const blink = now % 3200 < 130;
+      // A slow breath so the idle character feels alive.
+      const breath = 1 + Math.sin(now / 520) * 0.012;
+      this.drawFigure(c, cx, floor, { face: blink ? 'blink' : 'idle', squash: breath, tilt: 0 });
       c.restore();
       return;
     }
 
-    const headTop = floor - 92;
+    const headTop = floor - HEAD;
     if (hit.blocked) {
-      this.drawBlockedHit(c, hit.object, style, cx, y, headTop, t);
+      this.drawBlockedHit(c, hit.object, style, cx, y, floor, t);
       c.restore();
       return;
     }
 
-    // Before impact the character idles and the object falls; after it, the reaction plays.
+    // Before impact the character looks up and the object falls; after it, the reaction plays.
     const after = t - style.fall;
     if (after < 0) {
-      this.drawFigure(c, cx, floor, { squash: 1, tilt: 0, lookUp: true });
+      this.drawFigure(c, cx, floor, { face: 'look', squash: 1, tilt: 0 });
       const p = t / style.fall;
-      const oy = y - style.size + (headTop - (y - style.size)) * p * p;
-      drawObject(c, hit.object, cx, oy, style.size);
+      const start = y - style.size;
+      const end = headTop - style.size * 0.42;
+      drawObject(c, hit.object, cx, start + (end - start) * p * p, style.size, p * 0.6);
       c.restore();
       return;
     }
@@ -138,277 +165,92 @@ export class CharacterView {
     const recover = r < 0.55 ? 0 : (r - 0.55) / 0.45;
     const squash = style.squash + (1 - style.squash) * easeOutBack(recover);
     let tilt = 0;
-    if (hit.object === 'bowling') tilt = (r < 0.6 ? 1 : 1 - (r - 0.6) / 0.4) * (Math.PI / 2.8);
-    const flatTop = floor - 92 * squash;
+    if (hit.object === 'bowling') tilt = (r < 0.6 ? 1 : 1 - (r - 0.6) / 0.4) * (Math.PI / 2.6);
+    const flatTop = floor - HEAD * squash;
+    const face: Face = after < style.react * 0.8 ? (style.react >= 900 ? 'dazed' : 'blink') : 'idle';
 
+    if (style.shake >= 4) drawDust(c, cx, floor, after);
     if (hit.object === 'car' && r < 0.75) {
       // The car sits on the character: only the legs stick out from under it.
-      drawLegsUnder(c, cx, floor, this.color);
-      drawObject(c, 'car', cx, floor - style.size * 0.55, style.size);
+      const legs = flatImage(this.character);
+      if (legs) c.drawImage(legs, cx - SPRITE_W / 2, floor - SPRITE_H + 4, SPRITE_W, SPRITE_H);
+      const settle = Math.max(0, 1 - after / 160);
+      drawObject(c, 'car', cx, floor - style.size * 0.4 - settle * 8, style.size, 0);
     } else {
-      this.drawFigure(c, cx, floor, { squash, tilt, dazed: after < style.react * 0.8 });
+      this.drawFigure(c, cx, floor, { face, squash, tilt });
       // The object bounces off and fades.
       const fade = Math.max(0, 1 - r * 1.6);
       if (fade > 0) {
         c.globalAlpha = fade;
-        const side = hit.object === 'apple' || hit.object === 'flowerpot' ? 1 : 0;
-        drawObject(c, hit.object, cx + side * r * 60, flatTop - style.size * 0.5 - side * Math.sin(r * Math.PI) * 30, style.size);
+        const side = hit.object === 'apple' || hit.object === 'flowerpot' || hit.object === 'bowling' ? 1 : 0;
+        drawObject(c, hit.object, cx + side * r * 70, flatTop - style.size * 0.42 - side * Math.sin(r * Math.PI) * 34, style.size, side * r * 4);
         c.globalAlpha = 1;
       }
     }
 
-    if (style.react >= 900 && r < 0.8) drawStars(c, cx, flatTop - 10, after);
+    if (style.react >= 900 && r < 0.8) drawStars(c, cx, flatTop - 8, after);
     if (hit.object === 'piano') drawNotes(c, cx, flatTop, after);
-    if (hit.object === 'cow' && r < 0.7) shout(c, 'MOO!', cx + 30, y + 26);
-    if (hit.object === 'car' && r < 0.75) shout(c, 'CRASH!', cx, y + 26);
+    if (hit.object === 'cow' && r < 0.7) shout(c, 'MOO!', cx + 26, y + 28);
+    if (hit.object === 'car' && r < 0.75) shout(c, 'CRASH!', cx, y + 28, '#ffd166');
     if (hit.object === 'flowerpot' && r < 0.6) drawDirt(c, cx, flatTop);
+    if (hit.object === 'apple' && r < 0.5) shout(c, 'BONK', cx - 30, flatTop - 10, '#ffffff', 13);
     c.restore();
   }
 
-  private drawBlockedHit(c: CanvasRenderingContext2D, object: HitObject, style: ObjectStyle, cx: number, top: number, headTop: number, t: number): void {
-    const floor = headTop + 92;
-    this.drawFigure(c, cx, floor, { squash: 1, tilt: 0, lookUp: true });
-    const umbrellaY = headTop - 18;
-    drawUmbrella(c, cx, umbrellaY, floor);
+  private drawBlockedHit(c: CanvasRenderingContext2D, object: HitObject, style: ObjectStyle, cx: number, top: number, floor: number, t: number): void {
+    this.drawFigure(c, cx, floor, { face: 'look', squash: 1, tilt: 0 });
+    const size = 92;
+    const uy = floor - HEAD - 34;
+    const umbrella = umbrellaImage();
+    if (umbrella) c.drawImage(umbrella, cx - size / 2 + 6, uy - size * 0.3, size, size);
     const p = Math.min(1, t / style.fall);
+    const land = uy - style.size * 0.5;
     if (p < 1) {
-      const oy = top - style.size + (umbrellaY - style.size * 0.6 - (top - style.size)) * p * p;
-      drawObject(c, object, cx, oy, style.size);
+      const start = top - style.size;
+      drawObject(c, object, cx, start + (land - start) * p * p, style.size, 0);
     } else {
       // Bounce off the umbrella to the side.
       const b = (t - style.fall) / 500;
       if (b < 1) {
         c.globalAlpha = 1 - b;
-        drawObject(c, object, cx + b * 70, umbrellaY - style.size * 0.6 - Math.sin(b * Math.PI) * 30 + b * b * 60, style.size);
+        drawObject(c, object, cx + b * 70, land - Math.sin(b * Math.PI) * 30 + b * b * 60, style.size, b * 3);
         c.globalAlpha = 1;
-        shout(c, 'BLOCKED', cx, top + 26, '#8fd3ff');
+        shout(c, 'BLOCKED', cx, top + 28, '#8fd3ff');
       }
     }
   }
 
-  private drawFigure(
-    c: CanvasRenderingContext2D,
-    cx: number,
-    floor: number,
-    o: { squash: number; tilt: number; ko?: boolean; dazed?: boolean; blink?: boolean; lookUp?: boolean },
-  ): void {
+  private drawFigure(c: CanvasRenderingContext2D, cx: number, floor: number, o: { face: Face; squash: number; tilt: number; lift?: number }): void {
+    const img = characterImage(this.character, o.face);
+    if (!img) return;
     c.save();
-    c.translate(cx, floor);
+    c.translate(cx, floor - (o.lift ?? 0));
     c.rotate(-o.tilt);
-    c.scale(1 + (1 - o.squash) * 0.6, o.squash);
-    // Legs
-    c.strokeStyle = shade(this.color, -0.4);
-    c.lineWidth = 6;
-    c.lineCap = 'round';
-    c.beginPath();
-    c.moveTo(-9, -24);
-    c.lineTo(-11, -2);
-    c.moveTo(9, -24);
-    c.lineTo(11, -2);
-    c.stroke();
-    // Body
-    c.fillStyle = this.color;
-    c.beginPath();
-    c.roundRect(-20, -62, 40, 42, 14);
-    c.fill();
-    // Head
-    c.fillStyle = '#f2d4b6';
-    c.beginPath();
-    c.arc(0, -76, 17, 0, Math.PI * 2);
-    c.fill();
-    // Face
-    c.strokeStyle = '#20222e';
-    c.fillStyle = '#20222e';
-    c.lineWidth = 2;
-    const eyeY = o.lookUp ? -81 : -78;
-    if (o.ko || o.dazed) {
-      for (const ex of [-6, 6]) {
-        c.beginPath();
-        c.moveTo(ex - 3, eyeY - 3);
-        c.lineTo(ex + 3, eyeY + 3);
-        c.moveTo(ex + 3, eyeY - 3);
-        c.lineTo(ex - 3, eyeY + 3);
-        c.stroke();
-      }
-    } else if (o.blink) {
-      c.beginPath();
-      c.moveTo(-9, eyeY);
-      c.lineTo(-3, eyeY);
-      c.moveTo(3, eyeY);
-      c.lineTo(9, eyeY);
-      c.stroke();
-    } else {
-      for (const ex of [-6, 6]) {
-        c.beginPath();
-        c.arc(ex, eyeY, 2.4, 0, Math.PI * 2);
-        c.fill();
-      }
-    }
-    c.beginPath();
-    if (o.ko || o.dazed) c.arc(0, -66, 4, Math.PI * 1.15, Math.PI * 1.85);
-    else c.arc(0, -71, 5, Math.PI * 0.15, Math.PI * 0.85);
-    c.stroke();
+    // Squashing flattens and widens, like a cartoon.
+    c.scale(1 + (1 - o.squash) * 0.7, o.squash);
+    c.drawImage(img, -SPRITE_W / 2, -SPRITE_H, SPRITE_W, SPRITE_H);
     c.restore();
   }
 }
 
-function drawObject(c: CanvasRenderingContext2D, object: HitObject, cx: number, cy: number, size: number): void {
-  const s = size;
+function drawObject(c: CanvasRenderingContext2D, object: HitObject, cx: number, cy: number, size: number, spin: number): void {
+  const img = objectImage(object);
+  if (!img) return;
   c.save();
   c.translate(cx, cy);
-  switch (object) {
-    case 'apple':
-      c.fillStyle = '#e8404c';
-      c.beginPath();
-      c.arc(0, 0, s / 2, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#4caf50';
-      c.beginPath();
-      c.ellipse(s * 0.2, -s * 0.55, s * 0.22, s * 0.1, -0.5, 0, Math.PI * 2);
-      c.fill();
-      break;
-    case 'flowerpot':
-      c.fillStyle = '#c96a3c';
-      c.beginPath();
-      c.moveTo(-s / 2, -s * 0.2);
-      c.lineTo(s / 2, -s * 0.2);
-      c.lineTo(s * 0.35, s / 2);
-      c.lineTo(-s * 0.35, s / 2);
-      c.closePath();
-      c.fill();
-      c.fillStyle = '#5ccb4a';
-      c.beginPath();
-      c.ellipse(0, -s * 0.4, s * 0.3, s * 0.25, 0, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#ff7ab8';
-      c.beginPath();
-      c.arc(0, -s * 0.55, s * 0.13, 0, Math.PI * 2);
-      c.fill();
-      break;
-    case 'bowling':
-      c.fillStyle = '#2b3a8f';
-      c.beginPath();
-      c.arc(0, 0, s / 2, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#0d1230';
-      for (const [hx, hy] of [[-0.12, -0.15], [0.08, -0.2], [-0.02, 0.02]]) {
-        c.beginPath();
-        c.arc(hx * s, hy * s, s * 0.06, 0, Math.PI * 2);
-        c.fill();
-      }
-      break;
-    case 'anvil':
-      c.fillStyle = '#7d8295';
-      c.beginPath();
-      c.moveTo(-s / 2, -s * 0.3);
-      c.lineTo(s / 2, -s * 0.3);
-      c.lineTo(s * 0.3, -s * 0.05);
-      c.lineTo(s * 0.15, s * 0.05);
-      c.lineTo(s * 0.3, s * 0.3);
-      c.lineTo(-s * 0.3, s * 0.3);
-      c.lineTo(-s * 0.15, s * 0.05);
-      c.lineTo(-s * 0.3, -s * 0.05);
-      c.closePath();
-      c.fill();
-      c.fillStyle = 'rgba(255,255,255,0.25)';
-      c.fillRect(-s / 2, -s * 0.3, s, s * 0.07);
-      break;
-    case 'piano': {
-      c.fillStyle = '#14151c';
-      c.fillRect(-s / 2, -s * 0.35, s, s * 0.7);
-      c.fillStyle = '#f4f4f4';
-      const keys = 8;
-      const kw = (s * 0.9) / keys;
-      for (let i = 0; i < keys; i++) c.fillRect(-s * 0.45 + i * kw + 0.5, s * 0.05, kw - 1, s * 0.22);
-      c.fillStyle = '#14151c';
-      for (const i of [1, 2, 4, 5, 6]) c.fillRect(-s * 0.45 + i * kw - kw * 0.25, s * 0.05, kw * 0.5, s * 0.13);
-      break;
-    }
-    case 'cow':
-      c.fillStyle = '#f4f4f4';
-      c.beginPath();
-      c.roundRect(-s / 2, -s * 0.25, s * 0.8, s * 0.45, s * 0.12);
-      c.fill();
-      c.fillStyle = '#20222e';
-      c.beginPath();
-      c.ellipse(-s * 0.25, -s * 0.05, s * 0.1, s * 0.08, 0.4, 0, Math.PI * 2);
-      c.ellipse(s * 0.05, s * 0.05, s * 0.09, s * 0.07, -0.3, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#f4f4f4';
-      c.beginPath();
-      c.arc(s * 0.38, -s * 0.2, s * 0.15, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#ffb3c1';
-      c.beginPath();
-      c.ellipse(s * 0.47, -s * 0.14, s * 0.07, s * 0.05, 0, 0, Math.PI * 2);
-      c.fill();
-      c.strokeStyle = '#f4f4f4';
-      c.lineWidth = s * 0.07;
-      c.beginPath();
-      for (const lx of [-0.4, -0.15, 0.05, 0.22]) {
-        c.moveTo(lx * s, s * 0.2);
-        c.lineTo(lx * s, s * 0.35);
-      }
-      c.stroke();
-      break;
-    case 'car':
-      c.fillStyle = '#e64a55';
-      c.beginPath();
-      c.roundRect(-s / 2, -s * 0.12, s, s * 0.3, s * 0.06);
-      c.fill();
-      c.beginPath();
-      c.roundRect(-s * 0.28, -s * 0.34, s * 0.52, s * 0.26, s * 0.08);
-      c.fill();
-      c.fillStyle = '#9fd8ff';
-      c.fillRect(-s * 0.22, -s * 0.29, s * 0.18, s * 0.16);
-      c.fillRect(s * 0.02, -s * 0.29, s * 0.17, s * 0.16);
-      c.fillStyle = '#16171f';
-      for (const wx of [-0.3, 0.3]) {
-        c.beginPath();
-        c.arc(wx * s, s * 0.2, s * 0.1, 0, Math.PI * 2);
-        c.fill();
-      }
-      break;
-  }
-  c.restore();
-}
-
-function drawLegsUnder(c: CanvasRenderingContext2D, cx: number, floor: number, color: string): void {
-  c.save();
-  c.strokeStyle = shade(color, -0.4);
-  c.lineWidth = 6;
-  c.lineCap = 'round';
-  c.beginPath();
-  c.moveTo(cx - 6, floor - 4);
-  c.lineTo(cx - 34, floor - 2);
-  c.moveTo(cx + 6, floor - 4);
-  c.lineTo(cx + 36, floor - 6);
-  c.stroke();
-  c.restore();
-}
-
-function drawUmbrella(c: CanvasRenderingContext2D, cx: number, top: number, floor: number): void {
-  c.save();
-  c.strokeStyle = '#c7c9d6';
-  c.lineWidth = 2;
-  c.beginPath();
-  c.moveTo(cx + 22, top);
-  c.lineTo(cx + 22, floor - 40);
-  c.stroke();
-  c.fillStyle = '#4f8cff';
-  c.beginPath();
-  c.arc(cx + 22, top + 4, 34, Math.PI, 0);
-  c.closePath();
-  c.fill();
+  c.rotate(spin);
+  c.drawImage(img, -size / 2, -size / 2, size, size);
   c.restore();
 }
 
 function drawStars(c: CanvasRenderingContext2D, cx: number, y: number, t: number): void {
   c.save();
   c.fillStyle = '#ffd84a';
+  c.strokeStyle = '#1b1d2a';
+  c.lineWidth = 1.5;
   for (let i = 0; i < 3; i++) {
     const a = t / 220 + (i * Math.PI * 2) / 3;
-    star(c, cx + Math.cos(a) * 24, y + Math.sin(a) * 6, 5);
+    star(c, cx + Math.cos(a) * 26, y + Math.sin(a) * 7, 6);
   }
   c.restore();
 }
@@ -422,17 +264,18 @@ function star(c: CanvasRenderingContext2D, x: number, y: number, r: number): voi
   }
   c.closePath();
   c.fill();
+  c.stroke();
 }
 
 function drawNotes(c: CanvasRenderingContext2D, cx: number, y: number, t: number): void {
   c.save();
   c.fillStyle = '#c9b8ff';
-  c.font = `700 18px ${FONT}`;
+  c.font = `700 20px ${FONT}`;
   c.textAlign = 'center';
-  ['♪', '♫', '♪'].forEach((n, i) => {
-    const p = (t / 900 + i * 0.3) % 1;
+  ['♪', '♫', '♪', '♬'].forEach((n, i) => {
+    const p = (t / 900 + i * 0.25) % 1;
     c.globalAlpha = 1 - p;
-    c.fillText(n, cx + (i - 1) * 30 + Math.sin(p * 6) * 6, y - 10 - p * 60);
+    c.fillText(n, cx + (i - 1.5) * 26 + Math.sin(p * 6) * 6, y - 10 - p * 60);
   });
   c.restore();
 }
@@ -440,7 +283,7 @@ function drawNotes(c: CanvasRenderingContext2D, cx: number, y: number, t: number
 function drawDirt(c: CanvasRenderingContext2D, cx: number, y: number): void {
   c.save();
   c.fillStyle = '#6b4a2f';
-  for (const [dx, dy, r] of [[-8, 2, 4], [2, -1, 5], [9, 3, 3]]) {
+  for (const [dx, dy, r] of [[-10, 4, 4], [0, 0, 5], [10, 4, 3.5], [5, 8, 3]]) {
     c.beginPath();
     c.arc(cx + dx, y + dy, r, 0, Math.PI * 2);
     c.fill();
@@ -448,11 +291,47 @@ function drawDirt(c: CanvasRenderingContext2D, cx: number, y: number): void {
   c.restore();
 }
 
-function shout(c: CanvasRenderingContext2D, text: string, x: number, y: number, color = '#ffffff'): void {
+/** Puffs of dust from the floor on a heavy landing. */
+function drawDust(c: CanvasRenderingContext2D, cx: number, floor: number, t: number): void {
+  if (t > 500) return;
+  const p = t / 500;
   c.save();
-  c.font = `900 18px ${FONT}`;
+  c.globalAlpha = 0.55 * (1 - p);
+  c.fillStyle = '#c9c3b6';
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      c.beginPath();
+      c.arc(cx + side * (34 + p * 30 + i * 12), floor - 6 - i * 3 - p * 8, 7 + p * 6 - i * 1.5, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  c.restore();
+}
+
+const CONFETTI = ['#ff6b7a', '#ffd166', '#7ddc8a', '#5ff3ff', '#c9b8ff'];
+
+function drawConfetti(c: CanvasRenderingContext2D, x: number, y: number, w: number, t: number): void {
+  c.save();
+  for (let i = 0; i < 18; i++) {
+    const fall = ((t / 1400 + i * 0.137) % 1) * 1.1;
+    const px = x + ((i * 53) % w) + Math.sin(t / 300 + i) * 6;
+    const py = y + fall * 200 - 10;
+    c.fillStyle = CONFETTI[i % CONFETTI.length];
+    c.save();
+    c.translate(px, py);
+    c.rotate(t / 200 + i);
+    c.fillRect(-3, -1.5, 6, 3);
+    c.restore();
+  }
+  c.restore();
+}
+
+function shout(c: CanvasRenderingContext2D, text: string, x: number, y: number, color = '#ffffff', size = 18): void {
+  c.save();
+  c.font = `900 ${size}px ${FONT}`;
   c.textAlign = 'center';
   c.lineWidth = 4;
+  c.lineJoin = 'round';
   c.strokeStyle = '#07080d';
   c.strokeText(text, x, y);
   c.fillStyle = color;

@@ -1,15 +1,30 @@
 import {
+  CHARACTER_NAMES,
+  CHARACTERS,
   DEFAULT_HANDLING,
+  DEFAULT_KEYS,
+  EARNED_SKINS,
   Game,
+  KEYS,
   Match,
   MatchRecorder,
   randomSeed,
   Recorder,
   SDF_INSTANT,
   TICK_RATE,
+  MAX_KEYS_PER_ACTION,
+  sanitizeKeys,
+  SKIN_NAMES,
+  SKINS,
+  THEME_NAMES,
+  THEMES,
+  type CharacterId,
   type ClearInfo,
+  type GameEvent,
+  type Key,
   type GameConfig,
   type KeyEvent,
+  type Look,
   type MatchConfig,
   type MatchReplay,
   type MatchSummary,
@@ -17,26 +32,33 @@ import {
   REGION_NAMES,
   REGIONS,
   type Replay,
+  type SkinId,
 } from '@line-battle/engine';
 import { Account, ApiError } from './account';
 import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@line-battle/bot';
 import { BotWorker } from './bot-client';
-import { CharacterView } from './character';
-import { Keyboard, P1_BINDINGS, P2_BINDINGS, SOLO_BINDINGS } from './input';
+import { characterUrl, preloadArt } from './art';
+import { CharacterView, fallMs, objectFor } from './character';
+import { ACTION_NAMES, bindingsFrom, Keyboard, keyLabel, keysText, P1_BINDINGS, P2_BINDINGS, RESERVED_CODES } from './input';
 import { describeEnd, OnlineMatch, type JoinKind, type OnlinePhase } from './online';
-import { formatTime, PLAYER_COLORS, Renderer, type Popup } from './render';
+import { formatTime, Renderer, type Popup } from './render';
+import { drawCell, skinSheet, THEME_COLORS } from './skins';
+import { Sound } from './sound';
+import { Tutorial } from './tutorial';
 import {
   loadBestTicks,
   loadBotLevel,
   loadGauntletBest,
   loadHandling,
   loadName,
+  loadPrefs,
   loadRegion,
   saveBestTicks,
   saveBotLevel,
   saveGauntletBest,
   saveHandling,
   saveName,
+  savePrefs,
   saveRegion,
 } from './settings';
 
@@ -51,14 +73,18 @@ const COUNTDOWN = ['3', '2', '1'];
 const MAX_CATCH_UP = 8;
 
 /** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
-type Mode = 'sprint' | 'versus' | 'bot' | 'online';
+type Mode = 'sprint' | 'versus' | 'bot' | 'online' | 'tutorial';
 /** 'lobby' covers connecting, waiting for an opponent and connection errors. */
-type Screen = 'menu' | 'settings' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
+type Screen = 'menu' | 'settings' | 'customize' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const renderer = new Renderer($<HTMLCanvasElement>('game'));
-const soloKeys = new Keyboard(SOLO_BINDINGS);
+let prefs = loadPrefs();
+const soloKeys = new Keyboard(bindingsFrom(prefs.keys));
+const sound = new Sound();
+sound.setVolume(prefs.volume);
+preloadArt();
 const versusKeys = [new Keyboard(P1_BINDINGS), new Keyboard(P2_BINDINGS)] as const;
 const allKeyboards = [soloKeys, ...versusKeys];
 
@@ -66,6 +92,8 @@ let mode: Mode = 'sprint';
 let screen: Screen = 'menu';
 let handling = loadHandling();
 let countdownStart = 0;
+/** The countdown number last shown, so each one beeps once. */
+let lastCountdownStep = -1;
 let lastFrame = performance.now();
 let accumulator = 0;
 let lastReplay: Replay | MatchReplay | null = null;
@@ -82,7 +110,7 @@ let match: Match | null = null;
 let matchRecorder: MatchRecorder | null = null;
 let score: [number, number] = [0, 0];
 let popups: [Popup | null, Popup | null] = [null, null];
-const characters: [CharacterView, CharacterView] = [new CharacterView(PLAYER_COLORS[0]), new CharacterView(PLAYER_COLORS[1])];
+const characters: [CharacterView, CharacterView] = [new CharacterView(prefs.look.character), new CharacterView('bolt')];
 let pendingVersusStart: [KeyEvent[], KeyEvent[]] = [[], []];
 let banner: string | null = null;
 let roundEndAt = 0;
@@ -93,6 +121,9 @@ let botLevel: LevelId = loadBotLevel();
 let bot: BotController | null = null;
 /** Set during a gauntlet run; the bot's level is the current stage. */
 let gauntlet = false;
+
+// Tutorial state
+let tutorial: Tutorial | null = null;
 
 // Online state
 let online: OnlineMatch | null = null;
@@ -106,6 +137,9 @@ function show(next: Screen): void {
   screen = next;
   $('menu').classList.toggle('hidden', next !== 'menu');
   $('settings').classList.toggle('hidden', next !== 'settings');
+  $('customize').classList.toggle('hidden', next !== 'customize');
+  $('controls').classList.toggle('hidden', next !== 'controls');
+  $('tutorial-tip').classList.toggle('hidden', mode !== 'tutorial' || !inGameScreen(next));
   $('result').classList.toggle('hidden', next !== 'result');
   $('lobby').classList.toggle('hidden', next !== 'lobby');
   $('account').classList.toggle('hidden', next !== 'account');
@@ -113,7 +147,16 @@ function show(next: Screen): void {
   $('download-replay').classList.toggle('hidden', mode === 'online' ? !online?.matchId : !lastReplay);
   if (mode !== 'online') $('result-rating').classList.add('hidden');
   if (mode !== 'online') $<HTMLButtonElement>('retry').disabled = false;
-  if (next === 'menu') refreshBest();
+  if (next === 'menu') {
+    refreshBest();
+    refreshControlsTable();
+    // New players see the tutorial first.
+    $('start-tutorial').classList.toggle('primary', !prefs.tutorialDone);
+  }
+}
+
+function inGameScreen(s: Screen): boolean {
+  return s === 'playing' || s === 'countdown' || s === 'roundEnd';
 }
 
 function refreshBest(): void {
@@ -124,7 +167,44 @@ function refreshBest(): void {
 
 function setMode(next: Mode): void {
   mode = next;
-  renderer.setLayout(next === 'sprint' ? 'solo' : 'versus');
+  renderer.setLayout(next === 'sprint' || next === 'tutorial' ? 'solo' : 'versus');
+  applyLooks();
+}
+
+/** A skin you can use: earned skins need to be earned first. */
+function skinAllowed(skin: SkinId): boolean {
+  return skin !== 'gold' || loadGauntletBest() >= 5;
+}
+
+/** Your look, with any skin you haven't earned (e.g. set on another device) swapped for the default. */
+function myLook(): Look {
+  return { character: prefs.look.character, skin: skinAllowed(prefs.look.skin) ? prefs.look.skin : 'gem' };
+}
+
+/** A character for the other side that isn't yours. */
+function otherCharacter(preferred: CharacterId): CharacterId {
+  return preferred !== prefs.look.character ? preferred : CHARACTERS.find((c) => c !== preferred)!;
+}
+
+/** Characters, skins and theme for the current mode. */
+function applyLooks(): void {
+  const mine = myLook();
+  let theirs: Look;
+  if (mode === 'online' && online) theirs = online.looks[1];
+  else if (mode === 'bot') theirs = { character: otherCharacter('bolt'), skin: 'gem' };
+  else theirs = { character: otherCharacter('pip'), skin: 'gem' };
+  characters[0].character = mine.character;
+  characters[1].character = theirs.character;
+  renderer.setSkins([skinSheet(mine.skin), skinSheet(prefs.plainOpponent ? 'gem' : theirs.skin)]);
+  const theme = THEME_COLORS[prefs.theme];
+  renderer.setTheme(theme);
+  document.body.style.backgroundColor = theme.page;
+}
+
+/** Saves prefs here and, when signed in, on the account. */
+function storePrefs(): void {
+  savePrefs(prefs);
+  void account.saveSettings({ prefs });
 }
 
 function refreshBotMenu(): void {
@@ -138,7 +218,40 @@ function refreshBotMenu(): void {
 function startCountdown(): void {
   for (const k of allKeyboards) k.clearPending();
   countdownStart = performance.now();
+  lastCountdownStep = -1;
   show('countdown');
+}
+
+function startTutorial(): void {
+  setMode('tutorial');
+  tutorial = new Tutorial();
+  game = tutorial.game;
+  recorder = null;
+  popup = null;
+  refreshTutorialTip();
+  startCountdown();
+}
+
+function refreshTutorialTip(done = false): void {
+  if (!tutorial) return;
+  $('tutorial-step').textContent = tutorial.finished ? 'All done' : `Step ${tutorial.lesson + 1} of ${tutorial.count}`;
+  $('tutorial-title').textContent = tutorial.title();
+  $('tutorial-text').textContent = tutorial.text(prefs.keys);
+  $('tutorial-end').classList.toggle('hidden', !tutorial.finished);
+  $('tutorial-skip').classList.toggle('hidden', tutorial.finished);
+  const tip = $('tutorial-tip');
+  if (done) {
+    tip.classList.remove('done');
+    void tip.offsetWidth;
+    tip.classList.add('done');
+  }
+}
+
+function finishTutorial(): void {
+  if (!prefs.tutorialDone) {
+    prefs = { ...prefs, tutorialDone: true };
+    storePrefs();
+  }
 }
 
 function startSprint(): void {
@@ -189,6 +302,7 @@ function playerNames(): [string, string] {
 function retry(): void {
   if (mode === 'online') return online && !online.canRematch ? startOnline({ kind: 'ranked' }) : online?.askRematch();
   if (mode === 'sprint') return startSprint();
+  if (mode === 'tutorial') return startTutorial();
   if (mode === 'versus') return startVersus();
   if (!gauntlet || !bot) return startBotMatch(bot?.level.id ?? botLevel, false);
   // Gauntlet: after a win go on to the next bot, after a loss start over.
@@ -248,6 +362,8 @@ function endRound(): void {
       banner = score[result] >= ROUNDS_TO_WIN ? `${name} WINS!` : `${name} TAKES THE ROUND`;
     }
   }
+  if (result !== null && result !== 'draw') characters[result].celebrate(now);
+  sound.topOut();
   roundEndAt = now;
   show('roundEnd');
 }
@@ -261,6 +377,7 @@ function showMatchResult(): void {
   const [a, b] = match.players;
   $('result-detail').textContent = `Last round: P1 sent ${a.attackSent} lines, P2 sent ${b.attackSent} lines`;
   $('retry').textContent = 'Rematch (Enter)';
+  sound.win();
   show('result');
 }
 
@@ -289,6 +406,8 @@ function showBotResult(): void {
   $('result-time').textContent = `${score[0]} – ${score[1]}`;
   $('result-detail').textContent = `Last round: you sent ${a.attackSent} lines, the bot sent ${b.attackSent}`;
   $('retry').textContent = retryLabel;
+  if (won) sound.win();
+  else sound.lose();
   show('result');
 }
 
@@ -321,8 +440,9 @@ function startOnline(how: JoinKind): void {
         if (ev.type === 'clear') popups[side] = { lines: describeClear(ev.info), at: now };
         else if (ev.type === 'attack') {
           popups[side]?.lines.push(ev.info.sent > 0 ? `+${ev.info.sent} SENT` : 'BLOCKED');
-          characters[1 - side].addHit(ev.info.raw, ev.info.sent === 0, now);
+          hitCharacter(1 - side, ev.info.raw, ev.info.sent === 0, now);
         }
+        if (side === 0) playEventSound(ev);
       }
     },
     error: (message) => {
@@ -330,7 +450,7 @@ function startOnline(how: JoinKind): void {
     },
   });
   online = m;
-  void m.join(how, { name: account.me?.name ?? guestName, handling: { ...handling }, region, token: account.token });
+  void m.join(how, { name: account.me?.name ?? guestName, handling: { ...handling }, look: myLook(), region, token: account.token });
 }
 
 /** The lobby text while the queue searches. */
@@ -358,6 +478,8 @@ function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
     else lobby('Looking for an opponent…', 'Quick match pairs you with the next player who joins.');
   } else if (phase === 'countdown') {
     for (const k of allKeyboards) k.clearPending();
+    applyLooks();
+    lastCountdownStep = -1;
     popups = [null, null];
     banner = null;
     for (const c of characters) c.reset();
@@ -368,7 +490,11 @@ function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
     show('playing');
   } else if (phase === 'roundEnd' || phase === 'matchEnd') {
     const youWon = m.lastWinner === 'you';
-    if (m.lastWinner) characters[youWon ? 1 : 0].knockOut(now);
+    if (m.lastWinner) {
+      characters[youWon ? 1 : 0].knockOut(now);
+      characters[youWon ? 0 : 1].celebrate(now);
+      sound.topOut();
+    }
     const match = phase === 'matchEnd';
     banner = youWon ? (match ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : match ? `${m.names[1].toUpperCase()} WINS` : `${m.names[1].toUpperCase()} TAKES THE ROUND`;
     roundEndAt = now;
@@ -383,6 +509,8 @@ function showOnlineResult(m: OnlineMatch): void {
   $('retry').textContent = m.canRematch ? 'Rematch (Enter)' : 'Play ranked again (Enter)';
   banner = null;
   refreshOnlineResult(m);
+  if (youWon) sound.win();
+  else sound.lose();
   show('result');
   // The account bar shows the new rating.
   if (m.mode === 'ranked') void account.refresh();
@@ -434,6 +562,7 @@ function drawOnline(m: OnlineMatch, now: number): void {
     const left = m.playStart - now;
     const step = COUNTDOWN.length - Math.ceil(left / COUNTDOWN_STEP_MS);
     countdown = COUNTDOWN[Math.max(0, Math.min(COUNTDOWN.length - 1, step))];
+    beepCountdown(Math.max(0, step));
   }
   // Nothing to show behind the lobby yet.
   renderer.setLayout(games ? 'versus' : 'solo');
@@ -460,8 +589,59 @@ function stepSprint(): void {
   game.step(events);
   for (const ev of game.drainEvents()) {
     if (ev.type === 'clear') popup = { lines: describeClear(ev.info), at: performance.now() };
+    playEventSound(ev);
   }
   if (game.over) endSprint();
+}
+
+function stepTutorial(): void {
+  if (!game || !tutorial) return;
+  const events = [...pendingStart, ...soloKeys.take()];
+  pendingStart = [];
+  game.step(events);
+  const out = game.drainEvents();
+  for (const ev of out) {
+    if (ev.type === 'clear') popup = { lines: describeClear(ev.info), at: performance.now() };
+    playEventSound(ev);
+  }
+  const result = tutorial.update(events.filter((e) => e.down).map((e) => e.key), out);
+  if (result === 'done') {
+    sound.win();
+    refreshTutorialTip(true);
+    if (tutorial.finished) finishTutorial();
+  } else if (result === 'retry') {
+    popup = { lines: ['TRY AGAIN', 'the gap got covered'], at: performance.now() };
+  }
+  // Topping out just starts the same lesson again on a fresh board.
+  if (game.over) {
+    const lesson = tutorial.lesson;
+    tutorial = new Tutorial(lesson);
+    game = tutorial.game;
+    refreshTutorialTip();
+  }
+}
+
+/** Sounds for your own board's events. */
+function playEventSound(ev: GameEvent): void {
+  if (ev.type === 'lock') sound.lock();
+  else if (ev.type === 'clear') sound.clear(ev.info);
+  else if (ev.type === 'hold') sound.hold();
+  else if (ev.type === 'garbage') sound.garbage(ev.lines);
+}
+
+/** An attack lands on `side`'s character, with its sound when the object hits. */
+function hitCharacter(side: number, raw: number, blocked: boolean, now: number): void {
+  if (raw <= 0) return;
+  characters[side].addHit(raw, blocked, now);
+  const object = objectFor(raw);
+  // In a bot or online match side 0 is you; the hit on you is the louder one.
+  sound.impact(object, blocked, fallMs(object) / 1000, mode === 'versus' || side === 0);
+}
+
+function beepCountdown(step: number): void {
+  if (step === lastCountdownStep) return;
+  lastCountdownStep = step;
+  sound.countdown(false);
 }
 
 function stepVersus(): void {
@@ -478,13 +658,14 @@ function stepVersus(): void {
   const now = performance.now();
   match.drainEvents().forEach((events, p) => {
     for (const ev of events) {
+      if (p === 0 || mode === 'versus') playEventSound(ev);
       if (ev.type === 'clear') {
         popups[p] = { lines: describeClear(ev.info), at: now };
       } else if (ev.type === 'attack') {
         const { raw, sent } = ev.info;
         popups[p]?.lines.push(sent > 0 ? `+${sent} SENT` : 'BLOCKED');
         // The object matches the full attack, so a big combo always looks big.
-        characters[1 - p].addHit(raw, sent === 0, now);
+        hitCharacter(1 - p, raw, sent === 0, now);
       }
     }
   });
@@ -526,14 +707,20 @@ function frame(now: number): void {
 
   if (screen === 'countdown') {
     const step = Math.floor((now - countdownStart) / COUNTDOWN_STEP_MS);
-    if (step >= COUNTDOWN.length) beginPlay();
-    else countdown = COUNTDOWN[step];
+    if (step >= COUNTDOWN.length) {
+      sound.countdown(true);
+      beginPlay();
+    } else {
+      countdown = COUNTDOWN[step];
+      beepCountdown(step);
+    }
   }
   if (screen === 'playing') {
     accumulator += elapsed;
     let n = 0;
     while (accumulator >= TICK_MS && n < MAX_CATCH_UP && screen === 'playing') {
       if (mode === 'sprint') stepSprint();
+      else if (mode === 'tutorial') stepTutorial();
       else stepVersus();
       accumulator -= TICK_MS;
       n++;
@@ -545,10 +732,11 @@ function frame(now: number): void {
     else startRound();
   }
 
-  if (mode !== 'sprint' && match) {
+  if ((mode === 'bot' || mode === 'versus') && match) {
     renderer.drawVersus(match, { countdown, popups, characters, score, roundsToWin: ROUNDS_TO_WIN, banner, names: playerNames() });
   } else {
-    renderer.draw(mode === 'sprint' ? game : null, { goalLines: SPRINT_LINES, countdown, popup });
+    const solo = mode === 'sprint' || mode === 'tutorial';
+    renderer.draw(solo ? game : null, { goalLines: mode === 'tutorial' ? 0 : SPRINT_LINES, countdown, popup });
   }
   requestAnimationFrame(frame);
 }
@@ -558,6 +746,8 @@ function frame(now: number): void {
 const inGame = () => screen === 'playing' || screen === 'countdown' || screen === 'roundEnd';
 
 addEventListener('keydown', (e) => {
+  sound.unlock();
+  if (screen === 'controls' && listening) return void bindKey(e);
   // Typing a name or a room code: only Enter and Esc mean anything there.
   if (e.target instanceof HTMLInputElement) {
     if (e.code === 'Enter' && e.target.id === 'room-code') joinByCode();
@@ -572,6 +762,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     e.preventDefault();
     if (screen === 'settings') return closeSettings();
+    if (screen === 'customize') return closeCustomize();
+    if (screen === 'controls') return closeControls();
+    if (mode === 'tutorial' && tutorial && !tutorial.finished) finishTutorial();
     if (screen === 'account' || screen === 'profile') return show('menu');
     if (mode === 'online') leaveOnline();
     if (screen !== 'menu') return show('menu');
@@ -580,9 +773,18 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Enter' && screen === 'result') return retry();
   const keyboards = mode === 'versus' ? versusKeys : [soloKeys];
   let claimed = false;
-  for (const k of keyboards) claimed = k.keyDown(e.code) || claimed;
+  for (const k of keyboards) {
+    // Move and rotate clicks; the engine reports locks, clears and holds itself.
+    const action = k.actionFor(e.code);
+    if (action && !e.repeat && screen === 'playing') {
+      if (action === 'left' || action === 'right') sound.move();
+      else if (action.startsWith('rotate')) sound.rotate();
+    }
+    claimed = k.keyDown(e.code) || claimed;
+  }
   if (claimed && inGame()) e.preventDefault();
 });
+addEventListener('pointerdown', () => sound.unlock());
 addEventListener('keyup', (e) => {
   let claimed = false;
   for (const k of allKeyboards) claimed = k.keyUp(e.code) || claimed;
@@ -593,6 +795,17 @@ addEventListener('blur', () => allKeyboards.forEach((k) => k.releaseAll()));
 // ---- menu and settings ----------------------------------------------------
 
 $('start').addEventListener('click', startSprint);
+$('start-tutorial').addEventListener('click', startTutorial);
+$('tutorial-skip').addEventListener('click', () => {
+  finishTutorial();
+  show('menu');
+});
+$('tutorial-menu').addEventListener('click', () => show('menu'));
+$('tutorial-bot').addEventListener('click', () => {
+  botLevel = 1;
+  saveBotLevel(1);
+  startBotMatch(1, false);
+});
 $('start-versus').addEventListener('click', startVersus);
 $('start-bot').addEventListener('click', () => startBotMatch(botLevel, false));
 $('start-gauntlet').addEventListener('click', () => startBotMatch(1, true));
@@ -743,6 +956,7 @@ function adoptAccountSettings(): void {
     saveHandling(handling);
   }
   setRegion(me.region);
+  if (me.prefs) setPrefs(me.prefs, false);
 }
 
 function openAccount(message = ''): void {
@@ -760,7 +974,7 @@ async function submitAccount(kind: 'login' | 'signup'): Promise<void> {
   buttons.forEach((b) => (b.disabled = true));
   error.textContent = '';
   try {
-    if (kind === 'signup') await account.signUp(name, password, region, handling);
+    if (kind === 'signup') await account.signUp(name, password, region, handling, prefs);
     else await account.logIn(name, password);
     adoptAccountSettings();
     $<HTMLInputElement>('account-password').value = '';
@@ -841,6 +1055,199 @@ async function openProfile(): Promise<void> {
     $('profile-detail').textContent = e instanceof Error ? e.message : String(e);
   }
 }
+
+// ---- prefs: character and skins, controls ---------------------------------
+
+/** Takes new prefs (from the account, or a reset); `store` saves them back too. */
+function setPrefs(next: typeof prefs, store = true): void {
+  prefs = next;
+  soloKeys.setBindings(bindingsFrom(prefs.keys));
+  sound.setVolume(prefs.volume);
+  applyLooks();
+  refreshControlsTable();
+  if (store) storePrefs();
+  else savePrefs(prefs);
+}
+
+/** The menu's table of your current keys. */
+function refreshControlsTable(): void {
+  const table = $<HTMLTableElement>('solo-controls');
+  table.innerHTML = '';
+  const head = table.insertRow();
+  const th = document.createElement('th');
+  th.colSpan = 2;
+  th.textContent = 'Sprint, bots and online';
+  head.append(th);
+  const rows: [string, string][] = [
+    ['Move', `${keysText(prefs.keys.left)} / ${keysText(prefs.keys.right)}`],
+    ['Soft drop', keysText(prefs.keys.softDrop)],
+    ['Hard drop', keysText(prefs.keys.hardDrop)],
+    ['Rotate clockwise', keysText(prefs.keys.rotateCW)],
+    ['Rotate counter-clockwise', keysText(prefs.keys.rotateCCW)],
+    ['Rotate 180', keysText(prefs.keys.rotate180)],
+    ['Hold', keysText(prefs.keys.hold)],
+    ['Restart / menu', 'R / Esc'],
+  ];
+  for (const [name, keys] of rows) {
+    const row = table.insertRow();
+    cell(row, name);
+    cell(row, keys);
+  }
+}
+
+function openCustomize(): void {
+  buildCustomize();
+  show('customize');
+}
+
+function closeCustomize(): void {
+  storePrefs();
+  show('menu');
+}
+
+function pickButton(parent: HTMLElement, selected: boolean, onPick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.classList.toggle('selected', selected);
+  b.addEventListener('click', () => {
+    onPick();
+    applyLooks();
+    buildCustomize();
+  });
+  parent.append(b);
+  return b;
+}
+
+function buildCustomize(): void {
+  const chars = $('character-pick');
+  chars.innerHTML = '';
+  for (const id of CHARACTERS) {
+    const b = pickButton(chars, prefs.look.character === id, () => (prefs = { ...prefs, look: { ...prefs.look, character: id } }));
+    const img = document.createElement('img');
+    img.src = characterUrl(id, prefs.look.character === id ? 'win' : 'idle');
+    img.alt = '';
+    b.append(img, CHARACTER_NAMES[id]);
+  }
+
+  const skins = $('skin-pick');
+  skins.innerHTML = '';
+  for (const id of SKINS) {
+    const allowed = skinAllowed(id);
+    const b = pickButton(skins, prefs.look.skin === id && allowed, () => (prefs = { ...prefs, look: { ...prefs.look, skin: id } }));
+    b.disabled = !allowed;
+    // A row of all 7 pieces' blocks plus garbage, so you can check they stay easy to tell apart.
+    const preview = document.createElement('canvas');
+    preview.width = 224;
+    preview.height = 64;
+    const c = preview.getContext('2d')!;
+    for (let i = 1; i <= 7; i++) drawCell(c, skinSheet(id), i, (i - 1) * 32, 0, 32);
+    b.append(preview, SKIN_NAMES[id]);
+    const earned = EARNED_SKINS[id];
+    if (earned) {
+      const note = document.createElement('span');
+      note.className = 'lock';
+      note.textContent = allowed ? 'Earned' : `Locked: ${earned.toLowerCase()}`;
+      b.append(note);
+    }
+  }
+
+  const themes = $('theme-pick');
+  themes.innerHTML = '';
+  for (const id of THEMES) {
+    const b = pickButton(themes, prefs.theme === id, () => (prefs = { ...prefs, theme: id }));
+    b.textContent = THEME_NAMES[id];
+  }
+
+  $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
+  $<HTMLInputElement>('volume').value = String(prefs.volume);
+  $('volume-out').textContent = prefs.volume === 0 ? 'off' : `${prefs.volume}%`;
+}
+
+$('open-customize').addEventListener('click', openCustomize);
+$('close-customize').addEventListener('click', closeCustomize);
+$<HTMLInputElement>('plain-opponent').addEventListener('change', (e) => {
+  prefs = { ...prefs, plainOpponent: (e.target as HTMLInputElement).checked };
+  applyLooks();
+});
+$<HTMLInputElement>('volume').addEventListener('input', (e) => {
+  prefs = { ...prefs, volume: Number((e.target as HTMLInputElement).value) };
+  sound.setVolume(prefs.volume);
+  $('volume-out').textContent = prefs.volume === 0 ? 'off' : `${prefs.volume}%`;
+});
+// A sample of the sound at the new volume.
+$<HTMLInputElement>('volume').addEventListener('change', () => sound.impact('apple', false, 0));
+
+/** The action waiting for a key press on the controls screen. */
+let listening: Key | null = null;
+
+function openControls(): void {
+  listening = null;
+  buildKeymap();
+  show('controls');
+}
+
+function closeControls(): void {
+  listening = null;
+  setPrefs({ ...prefs, keys: sanitizeKeys(prefs.keys) });
+  show('menu');
+}
+
+function buildKeymap(): void {
+  const table = $<HTMLTableElement>('keymap');
+  table.innerHTML = '';
+  for (const key of KEYS) {
+    const row = table.insertRow();
+    cell(row, ACTION_NAMES[key]);
+    const td = row.insertCell();
+    for (const code of prefs.keys[key]) {
+      const b = document.createElement('button');
+      b.className = 'key';
+      b.textContent = keyLabel(code);
+      b.title = 'Remove this key';
+      b.addEventListener('click', () => {
+        prefs = { ...prefs, keys: { ...prefs.keys, [key]: prefs.keys[key].filter((c) => c !== code) } };
+        buildKeymap();
+      });
+      td.append(b);
+    }
+    if (prefs.keys[key].length < MAX_KEYS_PER_ACTION) {
+      const add = document.createElement('button');
+      add.textContent = listening === key ? 'Press a key…' : '+';
+      add.classList.toggle('listening', listening === key);
+      add.title = 'Add a key';
+      add.addEventListener('click', () => {
+        listening = listening === key ? null : key;
+        buildKeymap();
+      });
+      td.append(add);
+    }
+  }
+  const empty = KEYS.filter((k) => prefs.keys[k].length === 0);
+  $('keymap-hint').textContent = empty.length
+    ? `${empty.map((k) => ACTION_NAMES[k]).join(', ')} ${empty.length === 1 ? 'has' : 'have'} no key yet: ${empty.length === 1 ? 'it gets its' : 'they get their'} default back when you leave.`
+    : 'Click + to add a key, or a key to remove it. Each action can have up to 3 keys. Esc, Enter, Tab and R are kept for the menus.';
+}
+
+/** A key pressed while the controls screen waits for one. */
+function bindKey(e: KeyboardEvent): void {
+  e.preventDefault();
+  const key = listening!;
+  listening = null;
+  if (e.code === 'Escape' || RESERVED_CODES.has(e.code) || !e.code) return buildKeymap();
+  // A key does one thing: take it off whatever had it before.
+  const keys = { ...prefs.keys };
+  for (const k of KEYS) keys[k] = keys[k].filter((c) => c !== e.code);
+  keys[key] = [...keys[key], e.code].slice(0, MAX_KEYS_PER_ACTION);
+  prefs = { ...prefs, keys };
+  buildKeymap();
+}
+
+$('open-controls').addEventListener('click', openControls);
+$('close-controls').addEventListener('click', closeControls);
+$('reset-keys').addEventListener('click', () => {
+  prefs = { ...prefs, keys: DEFAULT_KEYS };
+  listening = null;
+  buildKeymap();
+});
 
 void account.restore().then(adoptAccountSettings);
 refreshAccountBar();

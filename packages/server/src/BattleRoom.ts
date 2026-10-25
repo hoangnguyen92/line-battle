@@ -2,9 +2,11 @@ import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core
 import {
   isRegion,
   sanitizeHandling,
+  sanitizeLook,
   TICK_RATE,
   type EndReason,
   type Handling,
+  type Look,
   type MatchMode,
   type OnlineRoundReplay,
   type PlayerIndex,
@@ -48,6 +50,7 @@ interface Seat {
   user: User | null;
   name: string;
   handling: Handling;
+  look: Look;
   connected: boolean;
   wantsRematch: boolean;
 }
@@ -111,7 +114,7 @@ export class BattleRoom extends Room {
     return { user: getStore()?.userForToken(context.token) ?? null };
   }
 
-  onJoin(client: Client, options: { name?: unknown; handling?: unknown } = {}): void {
+  onJoin(client: Client, options: { name?: unknown; handling?: unknown; look?: unknown } = {}): void {
     const user = (client.auth as SeatAuth | undefined)?.user ?? null;
     this.seats.push({
       sessionId: client.sessionId,
@@ -119,6 +122,7 @@ export class BattleRoom extends Room {
       user,
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
+      look: sanitizeLook(options.look),
       connected: true,
       wantsRematch: false,
     });
@@ -312,6 +316,7 @@ export class BattleRoom extends Room {
       you: p,
       names: [a.name, b.name],
       handling: [a.handling, b.handling],
+      looks: [a.look, b.look],
       roundsToWin: ROUNDS_TO_WIN,
       score: [...this.score],
       mode: this.mode,

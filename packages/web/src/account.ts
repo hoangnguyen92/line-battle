@@ -1,4 +1,4 @@
-import type { Handling, LeaderboardEntry, MatchSummary, Me, OnlineReplay, Profile, Region, SessionResponse } from '@line-battle/engine';
+import type { Handling, LeaderboardEntry, MatchSummary, Me, OnlineReplay, Prefs, Profile, Region, SessionResponse } from '@line-battle/engine';
 
 const TOKEN_KEY = 'lineBattle.session';
 const configuredServer: string = import.meta.env.VITE_SERVER_URL || '';
@@ -60,8 +60,8 @@ export class Account {
     }
   }
 
-  async signUp(name: string, password: string, region: Region, handling: Handling): Promise<Me> {
-    return this.startSession(await this.call<SessionResponse>('POST', '/api/signup', { name, password, region, handling }));
+  async signUp(name: string, password: string, region: Region, handling: Handling, prefs: Prefs): Promise<Me> {
+    return this.startSession(await this.call<SessionResponse>('POST', '/api/signup', { name, password, region, handling, prefs }));
   }
 
   async logIn(name: string, password: string): Promise<Me> {
@@ -74,8 +74,8 @@ export class Account {
     if (token) await fetch(`${API_BASE}/api/logout`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }).catch(() => {});
   }
 
-  /** Saves handling and region to the account, so they follow you to other browsers. */
-  async saveSettings(settings: { handling?: Handling; region?: Region }): Promise<void> {
+  /** Saves handling, region and prefs to the account, so they follow you to other browsers. */
+  async saveSettings(settings: { handling?: Handling; region?: Region; prefs?: Prefs }): Promise<void> {
     if (!this.signedIn) return;
     try {
       this.setMe(await this.call<Me>('POST', '/api/me/settings', settings));

@@ -1,6 +1,7 @@
 import { Client, type Room } from '@colyseus/sdk';
 import {
   BATTLE_ROOM,
+  DEFAULT_LOOK,
   OnlinePlayer,
   QUEUE_ROOM,
   StreamPlayer,
@@ -11,6 +12,7 @@ import {
   type Handling,
   type JoinOptions,
   type KeyEvent,
+  type Look,
   type MatchMode,
   type PublicRating,
   type QueueJoinOptions,
@@ -53,6 +55,7 @@ export type JoinKind = { kind: 'quick' } | { kind: 'ranked' } | { kind: 'create'
 export interface JoinAs {
   name: string;
   handling: Handling;
+  look: Look;
   region: Region;
   token: string | null;
 }
@@ -77,6 +80,8 @@ export class OnlineMatch {
   code: string | null = null;
   you: 0 | 1 = 0;
   names: [string, string] = ['YOU', 'OPPONENT'];
+  /** [you, opponent] characters and skins. */
+  looks: [Look, Look] = [DEFAULT_LOOK, DEFAULT_LOOK];
   /** [you, opponent] rounds won. */
   score: [number, number] = [0, 0];
   roundsToWin = 2;
@@ -115,7 +120,7 @@ export class OnlineMatch {
     const client = new Client(SERVER_URL);
     if (as.token) client.auth.token = as.token;
     if (how.kind === 'quick' || how.kind === 'ranked') return this.enqueue(client, how.kind, as);
-    const opts: JoinOptions = { mode: 'private', name: as.name, handling: as.handling };
+    const opts: JoinOptions = { mode: 'private', name: as.name, handling: as.handling, look: as.look };
     try {
       const room = how.kind === 'create' ? await client.create(BATTLE_ROOM, opts) : await client.joinById(how.code.trim().toUpperCase(), opts);
       if (this.left) return void room.leave(true);
@@ -131,7 +136,7 @@ export class OnlineMatch {
   /** Waits in the matchmaking queue, then joins the match it finds. */
   private async enqueue(client: Client, kind: 'quick' | 'ranked', as: JoinAs): Promise<void> {
     this.queueKind = kind;
-    const opts: QueueJoinOptions = { queue: kind, region: as.region, name: as.name, handling: as.handling };
+    const opts: QueueJoinOptions = { queue: kind, region: as.region, name: as.name, handling: as.handling, look: as.look };
     let queue: Room;
     try {
       queue = await client.joinOrCreate(QUEUE_ROOM, opts);
@@ -228,6 +233,8 @@ export class OnlineMatch {
       const other = (1 - m.you) as 0 | 1;
       this.names = [m.names[m.you], m.names[other]];
       this.handling = [m.handling[m.you], m.handling[other]];
+      // An older server sends no looks.
+      if (m.looks) this.looks = [m.looks[m.you], m.looks[other]];
       this.score = [m.score[m.you], m.score[other]];
       this.roundsToWin = m.roundsToWin;
       this.mode = m.mode;

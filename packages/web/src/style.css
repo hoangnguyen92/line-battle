@@ -48,7 +48,7 @@ canvas {
   gap: 12px;
 }
 
-.hidden { display: none; }
+.hidden { display: none !important; }
 
 h1 { margin: 0; font-size: 40px; letter-spacing: 0.04em; }
 h2 { margin: 0; font-size: 26px; }
@@ -128,3 +128,50 @@ h3 { margin: 4px 0 6px; font-size: 15px; color: var(--muted); font-weight: 600; 
 .history .loss { color: #ff8a80; }
 .history button { padding: 2px 8px; font-size: 12px; }
 #profile .tables > div { max-height: 46vh; overflow-y: auto; }
+
+/* ---- phase 6: customise, controls, tutorial ---- */
+body { transition: background-color 0.3s; }
+.pick-grid { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 620px; }
+.pick-grid button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 10px; font-size: 12px; min-width: 70px; }
+.pick-grid button.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: #2a2550; }
+.pick-grid button:disabled { opacity: 0.45; cursor: not-allowed; }
+.pick-grid img { width: 64px; height: 77px; }
+.pick-grid canvas { width: 112px; height: 32px; image-rendering: auto; }
+.pick-grid .lock { color: var(--muted); font-size: 11px; max-width: 120px; }
+label.check { flex-direction: row; align-items: center; gap: 8px; width: auto; }
+.keymap { border-collapse: collapse; font-size: 14px; }
+.keymap td { padding: 4px 8px; text-align: left; }
+.keymap td:first-child { color: var(--muted); }
+.keymap button { padding: 3px 10px; font-size: 13px; margin-right: 4px; }
+.keymap button.key:hover { background: #5a2333; border-color: #ff8a80; text-decoration: line-through; }
+.keymap button.listening { background: var(--accent); border-color: var(--accent); }
+.tip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 92vw);
+  padding: 14px 20px;
+  background: color-mix(in srgb, var(--panel) 95%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.tip.hidden { display: none; }
+.tip h2 { font-size: 20px; }
+.tip p { margin: 0; }
+.tip .step { color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.tip.done { animation: pop 0.35s ease-out; }
+@keyframes pop { 0% { transform: translateX(-50%) scale(1.06); } 100% { transform: translateX(-50%) scale(1); } }
+.overlay { max-height: 96vh; overflow-y: auto; }
+#customize h3 { margin: 6px 0 0; }
+/* On wide screens the tutorial tip sits beside the board instead of over it. */
+@media (min-width: 1100px) {
+  .tip { top: 50%; left: max(16px, calc(50% - 600px)); transform: translateY(-50%); width: 270px; }
+  @keyframes pop { 0% { transform: translateY(-50%) scale(1.06); } 100% { transform: translateY(-50%) scale(1); } }
+}

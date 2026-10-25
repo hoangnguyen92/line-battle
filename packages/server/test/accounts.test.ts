@@ -151,6 +151,15 @@ describe('api', () => {
     expect(saved.body).toMatchObject({ region: 'asia', handling: { das: 20, arr: 3, sdf: 10 } });
     expect(((await call('GET', '/api/me', undefined, token)).body as Me).region).toBe('asia');
 
+    // Looks, keys and sound sync too; unknown values fall back to defaults.
+    expect(me.prefs).toBeNull();
+    const prefs = { look: { character: 'pip', skin: 'nope' }, theme: 'sakura', keys: { left: ['KeyJ'], right: ['KeyJ', 'KeyL'], hardDrop: [] }, volume: 300, plainOpponent: true };
+    const withPrefs = (await call('POST', '/api/me/settings', { prefs }, token)).body as Me;
+    expect(withPrefs.prefs).toMatchObject({ look: { character: 'pip', skin: 'gem' }, theme: 'sakura', volume: 100, plainOpponent: true, tutorialDone: false });
+    // A key can only do one thing, and an action with no key gets its default back.
+    expect(withPrefs.prefs!.keys).toMatchObject({ left: ['KeyJ'], right: ['KeyL'], hardDrop: ['Space'], hold: ['KeyC', 'ShiftLeft', 'ShiftRight'] });
+    expect(((await call('GET', '/api/me', undefined, token)).body as Me).prefs!.theme).toBe('sakura');
+
     expect((await call('POST', '/api/logout', undefined, token)).status).toBe(200);
     expect((await call('GET', '/api/me', undefined, token)).status).toBe(401);
     // The other session still works.

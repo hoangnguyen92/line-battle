@@ -3,12 +3,14 @@ import { dirname } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import {
   sanitizeHandling,
+  sanitizePrefs,
   type Handling,
   type LeaderboardEntry,
   type MatchMode,
   type MatchSummary,
   type Me,
   type OnlineReplay,
+  type Prefs,
   type Profile,
   type PublicRating,
   type RatingChange,
@@ -30,6 +32,7 @@ export interface User {
   name: string;
   region: Region;
   handling: Handling | null;
+  prefs: Prefs | null;
   /** Current rating, with the deviation already widened for time away. */
   rating: Rating;
   games: number;
@@ -42,6 +45,7 @@ interface UserRow {
   password: string;
   region: string;
   handling: string | null;
+  prefs: string | null;
   rating: number;
   rd: number;
   vol: number;
@@ -141,6 +145,13 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;');
     this.db.exec(SCHEMA);
+    this.migrate();
+  }
+
+/** Columns added after the first release; SQLite has no ADD COLUMN IF NOT EXISTS. */
+  private migrate(): void {
+    const columns = (this.db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes('prefs')) this.db.exec('ALTER TABLE users ADD COLUMN prefs TEXT');
   }
 
   close(): void {
@@ -178,7 +189,8 @@ export class Store {
     return row ? this.toUser(row) : null;
   }
 
-  saveSettings(userId: number, settings: { handling?: Handling; region?: Region }): void {
+  saveSettings(userId: number, settings: { handling?: Handling; region?: Region; prefs?: Prefs }): void {
+    if (settings.prefs) this.db.prepare('UPDATE users SET prefs = ? WHERE id = ?').run(JSON.stringify(settings.prefs), userId);
     if (settings.handling) this.db.prepare('UPDATE users SET handling = ? WHERE id = ?').run(JSON.stringify(settings.handling), userId);
     if (settings.region) this.db.prepare('UPDATE users SET region = ? WHERE id = ?').run(settings.region, userId);
   }
@@ -189,6 +201,7 @@ export class Store {
       name: user.name,
       region: user.region,
       handling: user.handling,
+      prefs: user.prefs,
       rating: publicRating(user.rating),
       games: user.games,
       wins: user.wins,
@@ -197,8 +210,10 @@ export class Store {
 
   private toUser(row: UserRow): User {
     let handling: Handling | null = null;
+    let prefs: Prefs | null = null;
     try {
       handling = row.handling ? sanitizeHandling(JSON.parse(row.handling)) : null;
+      prefs = row.prefs ? sanitizePrefs(JSON.parse(row.prefs)) : null;
     } catch {
       /* a broken value just falls back to the browser's own */
     }
@@ -209,6 +224,7 @@ export class Store {
       name: row.name,
       region: row.region as Region,
       handling,
+      prefs,
       rating: { ...stored, rd: idleRd(stored, idle) },
       games: row.games,
       wins: row.wins,

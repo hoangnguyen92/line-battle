@@ -1,23 +1,66 @@
-import type { Key, KeyEvent } from '@line-battle/engine';
+import { KEYS, type Key, type KeyEvent, type KeyMap } from '@line-battle/engine';
 
 export type Bindings = Record<string, Key>;
 
-/** Single-player bindings by KeyboardEvent.code. Several keys may share an action. */
-export const SOLO_BINDINGS: Bindings = {
-  ArrowLeft: 'left',
-  ArrowRight: 'right',
-  ArrowDown: 'softDrop',
-  Space: 'hardDrop',
-  ArrowUp: 'rotateCW',
-  KeyX: 'rotateCW',
-  KeyZ: 'rotateCCW',
-  ControlLeft: 'rotateCCW',
-  ControlRight: 'rotateCCW',
-  KeyA: 'rotate180',
-  KeyC: 'hold',
-  ShiftLeft: 'hold',
-  ShiftRight: 'hold',
+/** Single-player bindings by KeyboardEvent.code, from the player's key map. */
+export function bindingsFrom(keys: KeyMap): Bindings {
+  const out: Bindings = {};
+  for (const key of KEYS) for (const code of keys[key]) out[code] = key;
+  return out;
+}
+
+export const ACTION_NAMES: Record<Key, string> = {
+  left: 'Move left',
+  right: 'Move right',
+  softDrop: 'Soft drop',
+  hardDrop: 'Hard drop',
+  rotateCW: 'Rotate clockwise',
+  rotateCCW: 'Rotate counter-clockwise',
+  rotate180: 'Rotate 180',
+  hold: 'Hold',
 };
+
+const KEY_LABELS: Record<string, string> = {
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  Space: 'Space',
+  ShiftLeft: 'Left Shift',
+  ShiftRight: 'Right Shift',
+  ControlLeft: 'Left Ctrl',
+  ControlRight: 'Right Ctrl',
+  AltLeft: 'Left Alt',
+  AltRight: 'Right Alt',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Semicolon: ';',
+  Quote: "'",
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Minus: '-',
+  Equal: '=',
+  Backquote: '`',
+};
+
+/** A key code as players know it: "KeyX" is "X", "ArrowUp" is "↑". */
+export function keyLabel(code: string): string {
+  if (KEY_LABELS[code]) return KEY_LABELS[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (/^Numpad/.test(code)) return `Num ${code.slice(6)}`;
+  return code;
+}
+
+/** "← or X" style text for an action's keys. */
+export function keysText(codes: readonly string[]): string {
+  return codes.length ? codes.map(keyLabel).join(' or ') : 'none';
+}
+
+/** Keys the game needs for itself and so can't be bound. */
+export const RESERVED_CODES = new Set(['Escape', 'Enter', 'Tab', 'KeyR', 'MetaLeft', 'MetaRight', 'F5', 'F11', 'F12']);
 
 /** Local versus, left player. No Ctrl, so a Ctrl+W can't close the tab mid-round. */
 export const P1_BINDINGS: Bindings = {
@@ -52,6 +95,18 @@ export class Keyboard {
   private pending: KeyEvent[] = [];
 
   constructor(private bindings: Bindings) {}
+
+  /** New key bindings; anything held is released first. */
+  setBindings(bindings: Bindings): void {
+    this.releaseAll();
+    this.pending = [];
+    this.bindings = bindings;
+  }
+
+  /** The action a key code is bound to, if any. */
+  actionFor(code: string): Key | undefined {
+    return this.bindings[code];
+  }
 
   /** Returns true if the code is a game key (the caller should preventDefault). */
   keyDown(code: string): boolean {

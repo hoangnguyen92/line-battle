@@ -7,6 +7,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import {
   BATTLE_ROOM,
   DEFAULT_HANDLING,
+  DEFAULT_LOOK,
   OnlinePlayer,
   playOnlineRound,
   QUEUE_ROOM,
@@ -61,7 +62,7 @@ interface Queued {
 async function enqueue(queue: QueueJoinOptions['queue'], name: string, region: Region = 'asia', token?: string): Promise<Queued> {
   const client = new Client(url);
   if (token) client.auth.token = token;
-  const room = await client.joinOrCreate(QUEUE_ROOM, { queue, region, name, handling: DEFAULT_HANDLING } satisfies QueueJoinOptions);
+  const room = await client.joinOrCreate(QUEUE_ROOM, { queue, region, name, handling: DEFAULT_HANDLING, look: DEFAULT_LOOK } satisfies QueueJoinOptions);
   const status: QueueMessages['searching'][] = [];
   room.onMessage('searching', (m: QueueMessages['searching']) => status.push(m));
   const matched = new Promise<Player>((resolve, reject) => {
@@ -142,7 +143,7 @@ class Player {
   }
 }
 
-const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING });
+const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING, look: { character: name === 'Host' ? 'mochi' : 'bao', skin: 'neon' } });
 
 describe('battle room', () => {
   it('runs a private room match to the end, first to 2', async () => {
@@ -157,6 +158,7 @@ describe('battle room', () => {
     const [match] = await guest.waitFor('match');
     expect(match.you).toBe(1);
     expect(match.names).toEqual(['Host', 'Guest b']);
+    expect(match.looks).toEqual([{ character: 'mochi', skin: 'neon' }, { character: 'bao', skin: 'neon' }]);
 
     const [end] = await host.waitFor('matchEnd');
     expect(end).toEqual({ winner: 1, score: [0, 2], reason: 'topOut' });

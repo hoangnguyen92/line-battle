@@ -3,7 +3,9 @@ import {
   BATTLE_ROOM,
   isRegion,
   sanitizeHandling,
+  sanitizeLook,
   type Handling,
+  type Look,
   type QueueJoinOptions,
   type QueueKind,
   type QueueMessages,
@@ -37,6 +39,7 @@ interface Entry {
   user: User | null;
   name: string;
   handling: Handling;
+  look: Look;
   region: Region;
   rating: number;
   since: number;
@@ -85,6 +88,7 @@ export class QueueRoom extends Room {
       user,
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
+      look: sanitizeLook(options.look),
       region,
       rating: user ? user.rating.rating : DEFAULT_RATING.rating,
       since: Date.now(),
@@ -152,7 +156,7 @@ export class QueueRoom extends Room {
     try {
       const room = await matchMaker.createRoom(BATTLE_ROOM, { mode: a.kind, region: a.region });
       for (const e of pair) {
-        const reservation = await matchMaker.reserveSeatFor(room, { name: e.name, handling: e.handling }, { user: e.user, queued: true });
+        const reservation = await matchMaker.reserveSeatFor(room, { name: e.name, handling: e.handling, look: e.look }, { user: e.user, queued: true });
         this.tell(e, 'matched', { reservation });
       }
     } catch (err) {

@@ -1,4 +1,5 @@
 import { DEFAULT_HANDLING, Game, KEYS, SDF_INSTANT, type Handling, type Key, type KeyEvent } from './game';
+import type { Look } from './cosmetics';
 import type { PublicRating, RatingChange } from './lobby';
 
 /**
@@ -167,6 +168,8 @@ export interface ServerMessages {
     you: 0 | 1;
     names: [string, string];
     handling: [Handling, Handling];
+    /** Each player's character and block skin. */
+    looks: [Look, Look];
     roundsToWin: number;
     score: [number, number];
     /** 'ranked' and 'quick' matches come from the queue; 'private' from a room code. */
@@ -205,6 +208,7 @@ export interface JoinOptions {
   mode: 'private';
   name: string;
   handling: Handling;
+  look: Look;
 }
 
 /** Rooms are named this on the server. */

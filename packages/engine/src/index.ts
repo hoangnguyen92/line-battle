@@ -1,5 +1,6 @@
 export * from './attack';
 export * from './board';
+export * from './cosmetics';
 export * from './bag';
 export * from './game';
 export * from './lobby';
