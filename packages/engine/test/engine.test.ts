@@ -93,16 +93,32 @@ describe('entry delay', () => {
     expect(g.hold).toBeNull();
   });
 
-  it('makes a held direction charge DAS again for the new piece', () => {
+  const leftEdge = (g: ReturnType<typeof newGame>) => Math.min(...g.pieceCells().map(([x]) => x));
+
+  it('keeps DAS charged into the next piece', () => {
     const g = newGame({ entryDelay: 6, handling: { das: 10, arr: 0, sdf: 6 } });
     g.step([press('left')]);
+    stepN(g, 10); // charged: at the wall
     g.step([press('hardDrop')]);
     stepN(g, 6, [release('hardDrop')]);
-    const x0 = g.active!.x;
-    stepN(g, 9);
-    expect(g.active!.x).toBe(x0);
-    stepN(g, 1);
-    expect(Math.min(...g.pieceCells().map(([x]) => x))).toBe(0);
+    // The new piece goes straight to the wall, with no second wait.
+    expect(g.piecesPlaced).toBe(1);
+    expect(leftEdge(g)).toBe(0);
+  });
+
+  it('charges DAS between pieces, and a tap still waits for it', () => {
+    const g = newGame({ entryDelay: 6, handling: { das: 4, arr: 0, sdf: 6 } });
+    g.step([press('hardDrop')]);
+    // Pressed during the entry delay: charged by the time the piece appears.
+    g.step([release('hardDrop'), press('left')]);
+    stepN(g, 5);
+    expect(leftEdge(g)).toBe(0);
+    // A fresh press on the new piece still needs DAS before it slides.
+    const h = newGame({ handling: { das: 4, arr: 0, sdf: 6 } });
+    const x0 = h.active!.x;
+    h.step([press('left')]);
+    stepN(h, 2);
+    expect(h.active!.x).toBe(x0 - 1);
   });
 });
 

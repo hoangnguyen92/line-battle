@@ -296,11 +296,16 @@ export class Game {
       this.keys[e.key] = e.down;
       if (e.key === 'left' || e.key === 'right') this.onShiftKey(e.key, e.down);
     }
+    // DAS keeps charging between pieces, and stays charged into the next one.
+    if (this.shiftDir !== 0 && this.dasTimer < this.config.handling.das) this.dasTimer++;
     if (--this.entryTimer > 0) return;
-    // A held direction must charge DAS again before it slides the new piece.
-    this.dasTimer = 0;
     this.arrTimer = 0;
     this.spawn(this.takeNext());
+    // A direction held with DAS charged slides the new piece straight away.
+    if (this.active && this.shiftDir !== 0 && this.dasTimer >= this.config.handling.das) {
+      if (this.config.handling.arr === 0) this.shiftToWall();
+      else this.tryMove(this.shiftDir, 0);
+    }
   }
 
   // ---- input -------------------------------------------------------------
