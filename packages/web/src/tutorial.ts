@@ -1,4 +1,5 @@
 import { BOARD_HEIGHT, BOARD_WIDTH, Game, randomSeed, type GameEvent, type Key, type KeyMap } from '@line-battle/engine';
+import { t } from './i18n';
 import { keysText } from './input';
 
 /** Garbage cell value on the board. */
@@ -34,34 +35,34 @@ function well(game: Game, rows: number, hole: number): void {
 const LESSONS: Lesson[] = [
   {
     title: 'Move',
-    text: (k) => `Move the falling piece left and right with ${keysText(k.left)} and ${keysText(k.right)}.`,
+    text: (k) => t('Move the falling piece left and right with {left} and {right}.', { left: keysText(k.left), right: keysText(k.right) }),
     done: (p) => p.has('left') && p.has('right'),
   },
   {
     title: 'Rotate',
-    text: (k) => `Turn it clockwise with ${keysText(k.rotateCW)}, and the other way with ${keysText(k.rotateCCW)}.`,
+    text: (k) => t('Turn it clockwise with {cw}, and the other way with {ccw}.', { cw: keysText(k.rotateCW), ccw: keysText(k.rotateCCW) }),
     done: (p) => p.has('rotateCW') && p.has('rotateCCW'),
   },
   {
     title: 'Drop',
-    text: (k) => `Hold ${keysText(k.softDrop)} to drop faster, or press ${keysText(k.hardDrop)} to drop it all the way at once.`,
+    text: (k) => t('Hold {soft} to drop faster, or press {hard} to drop it all the way at once.', { soft: keysText(k.softDrop), hard: keysText(k.hardDrop) }),
     done: (p, ev) => p.has('hardDrop') && ev.some((e) => e.type === 'lock'),
   },
   {
     title: 'Hold',
-    text: (k) => `Press ${keysText(k.hold)} to put a piece aside for later. Press it again to swap it back.`,
+    text: (k) => t('Press {hold} to put a piece aside for later. Press it again to swap it back.', { hold: keysText(k.hold) }),
     done: (_p, ev) => ev.some((e) => e.type === 'hold'),
   },
   {
     title: 'Clear a line',
-    text: () => 'Fill the gap on the right to complete the row. Full rows disappear.',
+    text: () => t('Fill the gap on the right to complete the row. Full rows disappear.'),
     setup: (g) => well(g, 1, 9),
     done: (_p, ev) => ev.some((e) => e.type === 'clear'),
     stuck: (g) => covered(g, 1, 9),
   },
   {
     title: 'Clear four at once',
-    text: (k) => `Clearing 4 rows with one long I piece is a Quad: it sends 4 lines of garbage in a match. Use ${keysText(k.hold)} to save an I piece if it helps.`,
+    text: (k) => t('Clearing 4 rows with one long I piece is a Quad: it sends 4 lines of garbage in a match. Use {hold} to save an I piece if it helps.', { hold: keysText(k.hold) }),
     setup: (g) => well(g, 4, 9),
     done: (_p, ev) => ev.some((e) => e.type === 'clear' && e.info.lines >= 4),
     // A smaller clear also spoils the 4-row gap.
@@ -96,12 +97,12 @@ export class Tutorial {
   }
 
   title(): string {
-    return this.finished ? 'Ready for a match' : LESSONS[this.lesson].title;
+    return t(this.finished ? 'Ready for a match' : LESSONS[this.lesson].title);
   }
 
   text(keys: KeyMap): string {
     if (this.finished) {
-      return 'In a match, every clear sends garbage to your opponent, and bigger clears, combos and T-spins send more. Your clears cancel garbage coming at you first. Top out and you lose the round.';
+      return t('In a match, every clear sends garbage to your opponent, and bigger clears, combos and T-spins send more. Your clears cancel garbage coming at you first. Top out and you lose the round.');
     }
     return LESSONS[this.lesson].text(keys);
   }

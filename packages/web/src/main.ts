@@ -45,6 +45,7 @@ import { formatTime, Renderer, type Popup } from './render';
 import { drawCell, skinSheet, THEME_COLORS } from './skins';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
+import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
   loadBestTicks,
   loadBotLevel,
@@ -78,6 +79,9 @@ type Mode = 'sprint' | 'versus' | 'bot' | 'online' | 'tutorial';
 type Screen = 'menu' | 'settings' | 'customize' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+// Before any code fills in text of its own.
+translatePage();
 
 const renderer = new Renderer($<HTMLCanvasElement>('game'));
 let prefs = loadPrefs();
@@ -161,7 +165,7 @@ function inGameScreen(s: Screen): boolean {
 
 function refreshBest(): void {
   const best = loadBestTicks();
-  $('best').textContent = best ? formatTime(best) : 'none yet';
+  $('best').textContent = best ? formatTime(best) : t('none yet');
   refreshBotMenu();
 }
 
@@ -212,7 +216,7 @@ function refreshBotMenu(): void {
     b.classList.toggle('selected', Number(b.dataset.level) === botLevel);
   });
   const beaten = loadGauntletBest();
-  $('gauntlet-best').textContent = beaten === 5 ? 'all 5 bots beaten' : beaten > 0 ? `${beaten} of 5 bots beaten` : 'not started';
+  $('gauntlet-best').textContent = beaten === 5 ? t('all 5 bots beaten') : beaten > 0 ? t('{n} of 5 bots beaten', { n: beaten }) : t('not started');
 }
 
 function startCountdown(): void {
@@ -234,7 +238,7 @@ function startTutorial(): void {
 
 function refreshTutorialTip(done = false): void {
   if (!tutorial) return;
-  $('tutorial-step').textContent = tutorial.finished ? 'All done' : `Step ${tutorial.lesson + 1} of ${tutorial.count}`;
+  $('tutorial-step').textContent = tutorial.finished ? t('All done') : t('Step {n} of {total}', { n: tutorial.lesson + 1, total: tutorial.count });
   $('tutorial-title').textContent = tutorial.title();
   $('tutorial-text').textContent = tutorial.text(prefs.keys);
   $('tutorial-end').classList.toggle('hidden', !tutorial.finished);
@@ -295,8 +299,8 @@ function startRound(): void {
 
 /** The names over the boards and in the result text. */
 function playerNames(): [string, string] {
-  if (mode !== 'bot' || !bot) return ['PLAYER 1', 'PLAYER 2'];
-  return ['YOU', `${bot.level.name.toUpperCase()} BOT`];
+  if (mode !== 'bot' || !bot) return [t('PLAYER 1'), t('PLAYER 2')];
+  return [t('YOU'), t('{level} BOT', { level: t(bot.level.name).toUpperCase() })];
 }
 
 function retry(): void {
@@ -330,17 +334,17 @@ function endSprint(): void {
     const best = loadBestTicks();
     const isBest = best === null || game.tick < best;
     if (isBest) saveBestTicks(game.tick);
-    title.textContent = isBest ? 'New personal best!' : 'Finished';
+    title.textContent = isBest ? t('New personal best!') : t('Finished');
     time.textContent = formatTime(game.tick);
     const pps = game.piecesPlaced / (game.tick / TICK_RATE);
-    detail.textContent = `${game.piecesPlaced} pieces · ${pps.toFixed(2)} pieces per second` +
-      (best !== null && !isBest ? ` · best ${formatTime(best)}` : '');
+    detail.textContent = t('{pieces} pieces · {pps} pieces per second', { pieces: game.piecesPlaced, pps: pps.toFixed(2) }) +
+      (best !== null && !isBest ? t(' · best {time}', { time: formatTime(best) }) : '');
   } else {
-    title.textContent = 'Topped out';
-    time.textContent = `${game.lines}/${SPRINT_LINES} lines`;
-    detail.textContent = `after ${formatTime(game.tick)}`;
+    title.textContent = t('Topped out');
+    time.textContent = t('{lines}/{goal} lines', { lines: game.lines, goal: SPRINT_LINES });
+    detail.textContent = t('after {time}', { time: formatTime(game.tick) });
   }
-  $('retry').textContent = 'Retry (R)';
+  $('retry').textContent = t('Retry (R)');
   show('result');
 }
 
@@ -351,15 +355,15 @@ function endRound(): void {
   const result = match.result;
   if (result === 'draw') {
     characters.forEach((c) => c.knockOut(now));
-    banner = 'DRAW';
+    banner = t('DRAW');
   } else if (result !== null) {
     score[result]++;
     characters[1 - result].knockOut(now);
     const name = playerNames()[result];
     if (mode === 'bot') {
-      banner = result === 0 ? (score[0] >= ROUNDS_TO_WIN ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : score[1] >= ROUNDS_TO_WIN ? 'THE BOT WINS' : 'THE BOT TAKES THE ROUND';
+      banner = t(result === 0 ? (score[0] >= ROUNDS_TO_WIN ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : score[1] >= ROUNDS_TO_WIN ? 'THE BOT WINS' : 'THE BOT TAKES THE ROUND');
     } else {
-      banner = score[result] >= ROUNDS_TO_WIN ? `${name} WINS!` : `${name} TAKES THE ROUND`;
+      banner = score[result] >= ROUNDS_TO_WIN ? t('{name} WINS!', { name }) : t('{name} TAKES THE ROUND', { name });
     }
   }
   if (result !== null && result !== 'draw') characters[result].celebrate(now);
@@ -372,11 +376,11 @@ function showMatchResult(): void {
   if (!match) return;
   if (mode === 'bot') return showBotResult();
   const winner = score[0] > score[1] ? 1 : 2;
-  $('result-title').textContent = `Player ${winner} wins!`;
+  $('result-title').textContent = t('Player {n} wins!', { n: winner });
   $('result-time').textContent = `${score[0]} – ${score[1]}`;
   const [a, b] = match.players;
-  $('result-detail').textContent = `Last round: P1 sent ${a.attackSent} lines, P2 sent ${b.attackSent} lines`;
-  $('retry').textContent = 'Rematch (Enter)';
+  $('result-detail').textContent = t('Last round: P1 sent {a} lines, P2 sent {b} lines', { a: a.attackSent, b: b.attackSent });
+  $('retry').textContent = t('Rematch (Enter)');
   sound.win();
   show('result');
 }
@@ -386,25 +390,26 @@ function showBotResult(): void {
   const won = score[0] > score[1];
   const level = bot.level;
   const [a, b] = match.players;
-  let title = won ? `You beat the ${level.name} bot!` : `The ${level.name} bot wins`;
-  let retryLabel = 'Rematch (Enter)';
+  const levelName = t(level.name);
+  let title = won ? t('You beat the {level} bot!', { level: levelName }) : t('The {level} bot wins', { level: levelName });
+  let retryLabel = t('Rematch (Enter)');
   if (gauntlet) {
     const beaten = won ? level.id : level.id - 1;
     if (beaten > loadGauntletBest()) saveGauntletBest(beaten);
     if (won && level.id === 5) {
-      title = 'Gauntlet complete: all 5 bots beaten!';
-      retryLabel = 'Run it again (Enter)';
+      title = t('Gauntlet complete: all 5 bots beaten!');
+      retryLabel = t('Run it again (Enter)');
     } else if (won) {
-      title = `Bot ${level.id} of 5 beaten!`;
-      retryLabel = `Next: ${LEVELS[(level.id + 1) as LevelId].name} bot (Enter)`;
+      title = t('Bot {n} of 5 beaten!', { n: level.id });
+      retryLabel = t('Next: {level} bot (Enter)', { level: t(LEVELS[(level.id + 1) as LevelId].name) });
     } else {
-      title = `Gauntlet over at bot ${level.id} of 5 (${level.name})`;
-      retryLabel = 'Start over (Enter)';
+      title = t('Gauntlet over at bot {n} of 5 ({level})', { n: level.id, level: levelName });
+      retryLabel = t('Start over (Enter)');
     }
   }
   $('result-title').textContent = title;
   $('result-time').textContent = `${score[0]} – ${score[1]}`;
-  $('result-detail').textContent = `Last round: you sent ${a.attackSent} lines, the bot sent ${b.attackSent}`;
+  $('result-detail').textContent = t('Last round: you sent {a} lines, the bot sent {b}', { a: a.attackSent, b: b.attackSent });
   $('retry').textContent = retryLabel;
   if (won) sound.win();
   else sound.lose();
@@ -413,7 +418,7 @@ function showBotResult(): void {
 
 // ---- online ---------------------------------------------------------------
 
-function lobby(title: string, detail = '', code: string | null = null, cancel = 'Cancel (Esc)'): void {
+function lobby(title: string, detail = '', code: string | null = null, cancel = t('Cancel (Esc)')): void {
   $('lobby-title').textContent = title;
   $('lobby-detail').textContent = detail;
   $('lobby-code').textContent = code ?? '';
@@ -431,7 +436,7 @@ function startOnline(how: JoinKind): void {
   lastReplay = null;
   const guestName = $<HTMLInputElement>('player-name').value.trim();
   saveName(guestName);
-  lobby('Connecting…');
+  lobby(t('Connecting…'));
   const m = new OnlineMatch({
     phase: (p) => onOnlinePhase(m, p),
     gameEvents: (side, events) => {
@@ -439,14 +444,14 @@ function startOnline(how: JoinKind): void {
       for (const ev of events) {
         if (ev.type === 'clear') popups[side] = { lines: describeClear(ev.info), at: now };
         else if (ev.type === 'attack') {
-          popups[side]?.lines.push(ev.info.sent > 0 ? `+${ev.info.sent} SENT` : 'BLOCKED');
+          popups[side]?.lines.push(ev.info.sent > 0 ? t('+{n} SENT', { n: ev.info.sent }) : t('BLOCKED'));
           hitCharacter(1 - side, ev.info.raw, ev.info.sent === 0, now);
         }
         if (side === 0) playEventSound(ev);
       }
     },
     error: (message) => {
-      if (online === m) lobby('Not connected', message, null, 'Back (Esc)');
+      if (online === m) lobby(t('Not connected'), message, null, t('Back (Esc)'));
     },
   });
   online = m;
@@ -458,11 +463,11 @@ function queueText(m: OnlineMatch): string {
   const s = m.search;
   if (!s) return '';
   const secs = Math.floor(s.waitedMs / 1000);
-  const where = s.anyRegion ? 'any region' : REGION_NAMES[s.region];
-  const others = s.inQueue > 1 ? `${s.inQueue - 1} other ${s.inQueue === 2 ? 'player' : 'players'} searching` : 'nobody else searching yet';
+  const where = s.anyRegion ? t('any region') : t(REGION_NAMES[s.region]);
+  const others = s.inQueue > 2 ? t('{n} other players searching', { n: s.inQueue - 1 }) : s.inQueue === 2 ? t('1 other player searching') : t('nobody else searching yet');
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-  if (s.serverFull) return `${clock} · The server is full (${s.playing ?? '?'} playing). You're in line: your match starts as soon as a slot opens.`;
-  return `${clock} · rating ${s.rating} ± ${s.range} · ${where} · ${others}`;
+  if (s.serverFull) return t("{clock} · The server is full ({playing} playing). You're in line: your match starts as soon as a slot opens.", { clock, playing: s.playing ?? '?' });
+  return t('{clock} · rating {rating} ± {range} · {where} · {others}', { clock, rating: s.rating, range: s.range, where, others });
 }
 
 function leaveOnline(): void {
@@ -474,10 +479,10 @@ function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
   if (online !== m) return;
   const now = performance.now();
   if (phase === 'queued') {
-    lobby(m.queueKind === 'ranked' ? 'Looking for a ranked opponent…' : 'Looking for an opponent…', queueText(m));
+    lobby(t(m.queueKind === 'ranked' ? 'Looking for a ranked opponent…' : 'Looking for an opponent…'), queueText(m));
   } else if (phase === 'waiting') {
-    if (m.code) lobby('Room created', 'Send this code to a friend. The match starts when they join.', m.code);
-    else lobby('Looking for an opponent…', 'Quick match pairs you with the next player who joins.');
+    if (m.code) lobby(t('Room created'), t('Send this code to a friend. The match starts when they join.'), m.code);
+    else lobby(t('Looking for an opponent…'), t('Quick match pairs you with the next player who joins.'));
   } else if (phase === 'countdown') {
     for (const k of allKeyboards) k.clearPending();
     applyLooks();
@@ -498,7 +503,8 @@ function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
       sound.topOut();
     }
     const match = phase === 'matchEnd';
-    banner = youWon ? (match ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : match ? `${m.names[1].toUpperCase()} WINS` : `${m.names[1].toUpperCase()} TAKES THE ROUND`;
+    const name = m.names[1].toUpperCase();
+    banner = youWon ? t(match ? 'YOU WIN!' : 'YOU TAKE THE ROUND') : match ? t('{name} WINS', { name }) : t('{name} TAKES THE ROUND', { name });
     roundEndAt = now;
     show('roundEnd');
   }
@@ -506,9 +512,9 @@ function onOnlinePhase(m: OnlineMatch, phase: OnlinePhase): void {
 
 function showOnlineResult(m: OnlineMatch): void {
   const youWon = m.lastWinner === 'you';
-  $('result-title').textContent = youWon ? 'You win!' : `${m.names[1]} wins`;
+  $('result-title').textContent = youWon ? t('You win!') : t('{name} wins', { name: m.names[1] });
   $('result-time').textContent = `${m.score[0]} – ${m.score[1]}`;
-  $('retry').textContent = m.canRematch ? 'Rematch (Enter)' : 'Play ranked again (Enter)';
+  $('retry').textContent = t(m.canRematch ? 'Rematch (Enter)' : 'Play ranked again (Enter)');
   banner = null;
   refreshOnlineResult(m);
   if (youWon) sound.win();
@@ -520,7 +526,7 @@ function showOnlineResult(m: OnlineMatch): void {
 
 /** The result text under the score, kept up to date with rematch requests. */
 function refreshOnlineResult(m: OnlineMatch): void {
-  const why = m.endReason ? describeEnd(m.endReason, m.lastWinner === 'you') : '';
+  const why = m.endReason ? t(describeEnd(m.endReason, m.lastWinner === 'you')) : '';
   $('download-replay').classList.toggle('hidden', !m.matchId);
   const change = m.ratingChange;
   const rating = $('result-rating');
@@ -534,7 +540,7 @@ function refreshOnlineResult(m: OnlineMatch): void {
       const delta = document.createElement('span');
       delta.className = diff >= 0 ? 'up' : 'down';
       delta.textContent = ` (${diff >= 0 ? '+' : ''}${diff})`;
-      rating.append(`Rating ${change.before.rating} → ${change.after.rating}`, delta);
+      rating.append(t('Rating {before} → {after}', { before: change.before.rating, after: change.after.rating }), delta);
     }
   }
   if (!m.canRematch) {
@@ -545,15 +551,17 @@ function refreshOnlineResult(m: OnlineMatch): void {
   }
   const gone = !m.room || !m.opponentConnected;
   const [mine, theirs] = m.rematch;
-  const rematch = gone ? (m.endReason === 'left' ? '' : 'Your opponent has gone.') : mine ? 'Waiting for your opponent to accept…' : theirs ? `${m.names[1]} wants a rematch!` : '';
+  const rematch = gone
+    ? (m.endReason === 'left' ? '' : t('Your opponent has gone.'))
+    : mine ? t('Waiting for your opponent to accept…') : theirs ? t('{name} wants a rematch!', { name: m.names[1] }) : '';
   $('result-detail').textContent = [why, rematch].filter(Boolean).join(' ');
   $<HTMLButtonElement>('retry').disabled = gone || mine;
 }
 
 function onlineStatus(m: OnlineMatch): string | null {
-  if (!m.connected) return 'Connection lost, reconnecting…';
-  if (!m.opponentConnected && m.phase !== 'matchEnd') return `${m.names[1]} lost connection, waiting for them…`;
-  if (m.phase === 'playing' && m.local?.game.over) return 'Waiting for the server…';
+  if (!m.connected) return t('Connection lost, reconnecting…');
+  if (!m.opponentConnected && m.phase !== 'matchEnd') return t('{name} lost connection, waiting for them…', { name: m.names[1] });
+  if (m.phase === 'playing' && m.local?.game.over) return t('Waiting for the server…');
   return null;
 }
 
@@ -612,7 +620,7 @@ function stepTutorial(): void {
     refreshTutorialTip(true);
     if (tutorial.finished) finishTutorial();
   } else if (result === 'retry') {
-    popup = { lines: ['TRY AGAIN', 'the gap got covered'], at: performance.now() };
+    popup = { lines: [t('TRY AGAIN'), t('the gap got covered')], at: performance.now() };
   }
   // Topping out just starts the same lesson again on a fresh board.
   if (game.over) {
@@ -665,7 +673,7 @@ function stepVersus(): void {
         popups[p] = { lines: describeClear(ev.info), at: now };
       } else if (ev.type === 'attack') {
         const { raw, sent } = ev.info;
-        popups[p]?.lines.push(sent > 0 ? `+${sent} SENT` : 'BLOCKED');
+        popups[p]?.lines.push(sent > 0 ? t('+{n} SENT', { n: sent }) : t('BLOCKED'));
         // The object matches the full attack, so a big combo always looks big.
         hitCharacter(1 - p, raw, sent === 0, now);
       }
@@ -683,7 +691,7 @@ function describeClear(info: ClearInfo): string[] {
   out.push(name);
   if (info.b2b > 0) out.push(`BACK-TO-BACK ×${info.b2b}`);
   if (info.combo > 0) out.push(`${info.combo} COMBO`);
-  if (info.perfectClear) out.push('PERFECT CLEAR');
+  if (info.perfectClear) out.push(t('PERFECT CLEAR'));
   return out;
 }
 
@@ -815,8 +823,8 @@ const levelButtons = $('bot-levels');
 for (const id of LEVEL_IDS) {
   const b = document.createElement('button');
   b.dataset.level = String(id);
-  b.textContent = `${id} ${LEVELS[id].name}`;
-  b.title = `${LEVELS[id].pps} pieces per second`;
+  b.textContent = `${id} ${t(LEVELS[id].name)}`;
+  b.title = t('{pps} pieces per second', { pps: LEVELS[id].pps });
   b.addEventListener('click', () => {
     botLevel = id;
     saveBotLevel(id);
@@ -831,7 +839,7 @@ $('to-menu').addEventListener('click', () => {
 });
 $('online-quick').addEventListener('click', () => startOnline({ kind: 'quick' }));
 $('online-ranked').addEventListener('click', () => {
-  if (!account.signedIn) return openAccount('Log in or create an account to play ranked.');
+  if (!account.signedIn) return openAccount(t('Log in or create an account to play ranked.'));
   startOnline({ kind: 'ranked' });
 });
 $('online-create').addEventListener('click', () => startOnline({ kind: 'create' }));
@@ -867,7 +875,7 @@ async function downloadOnlineReplay(matchId: number): Promise<void> {
   try {
     download(await account.replay(matchId), `line-battle-online-${matchId}.json`);
   } catch (e) {
-    alert(e instanceof Error ? e.message : String(e));
+    alert(t(e instanceof Error ? e.message : String(e)));
   }
 }
 
@@ -882,7 +890,7 @@ $('download-replay').addEventListener('click', () => {
 const sliders = { das: $<HTMLInputElement>('das'), arr: $<HTMLInputElement>('arr'), sdf: $<HTMLInputElement>('sdf') };
 
 function framesLabel(frames: number): string {
-  return `${frames} frames (${Math.round((frames * 1000) / TICK_RATE)} ms)`;
+  return t('{n} frames ({ms} ms)', { n: frames, ms: Math.round((frames * 1000) / TICK_RATE) });
 }
 
 function syncSettingsForm(): void {
@@ -890,8 +898,8 @@ function syncSettingsForm(): void {
   sliders.arr.value = String(handling.arr);
   sliders.sdf.value = String(handling.sdf);
   $('das-out').textContent = framesLabel(handling.das);
-  $('arr-out').textContent = handling.arr === 0 ? '0 (instant)' : framesLabel(handling.arr);
-  $('sdf-out').textContent = handling.sdf >= SDF_INSTANT ? 'instant' : `${handling.sdf}×`;
+  $('arr-out').textContent = handling.arr === 0 ? t('0 (instant)') : framesLabel(handling.arr);
+  $('sdf-out').textContent = handling.sdf >= SDF_INSTANT ? t('instant') : `${handling.sdf}×`;
 }
 
 for (const [name, input] of Object.entries(sliders) as [keyof typeof sliders, HTMLInputElement][]) {
@@ -915,7 +923,12 @@ function closeSettings(): void {
 // ---- accounts and profiles ------------------------------------------------
 
 const regionSelect = $<HTMLSelectElement>('region');
-for (const r of REGIONS) regionSelect.append(new Option(REGION_NAMES[r], r));
+for (const r of REGIONS) regionSelect.append(new Option(t(REGION_NAMES[r]), r));
+
+const languageSelect = $<HTMLSelectElement>('language');
+for (const l of LANGUAGES) languageSelect.append(new Option(LANGUAGE_NAMES[l], l));
+languageSelect.value = language;
+languageSelect.addEventListener('change', () => setLanguage(languageSelect.value as Language));
 
 function setRegion(next: Region): void {
   region = next;
@@ -936,9 +949,9 @@ function refreshAccountBar(): void {
     const strong = document.createElement('strong');
     strong.textContent = me.name;
     const r = me.rating;
-    status.append('Signed in as ', strong, ` · rating ${r.rating}${r.settled ? '' : ` ± ${r.rd}`}`);
+    status.append(t('Signed in as '), strong, t(' · rating {rating}', { rating: r.settled ? r.rating : `${r.rating} ± ${r.rd}` }));
   } else {
-    status.textContent = 'Playing as a guest';
+    status.textContent = t('Playing as a guest');
   }
   $('open-account').classList.toggle('hidden', !!me);
   $('open-profile').classList.toggle('hidden', !me);
@@ -972,7 +985,7 @@ async function submitAccount(kind: 'login' | 'signup'): Promise<void> {
   const password = $<HTMLInputElement>('account-password').value;
   const error = $('account-error');
   const buttons = [$<HTMLButtonElement>('log-in'), $<HTMLButtonElement>('sign-up')];
-  if (!name || !password) return void (error.textContent = 'Enter a name and a password.');
+  if (!name || !password) return void (error.textContent = t('Enter a name and a password.'));
   buttons.forEach((b) => (b.disabled = true));
   error.textContent = '';
   try {
@@ -982,7 +995,7 @@ async function submitAccount(kind: 'login' | 'signup'): Promise<void> {
     $<HTMLInputElement>('account-password').value = '';
     show('menu');
   } catch (e) {
-    error.textContent = e instanceof ApiError ? e.message : 'Something went wrong. Try again.';
+    error.textContent = t(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
   } finally {
     buttons.forEach((b) => (b.disabled = false));
   }
@@ -1010,16 +1023,16 @@ function matchRow(table: HTMLTableElement, m: MatchSummary): void {
   const row = table.insertRow();
   const won = m.winner === m.side;
   const opp = m.names[1 - m.side];
-  cell(row, won ? 'Win' : m.winner === null ? 'Void' : 'Loss', won ? 'win' : 'loss');
+  cell(row, t(won ? 'Win' : m.winner === null ? 'Void' : 'Loss'), won ? 'win' : 'loss');
   cell(row, `${m.score[m.side]}–${m.score[1 - m.side]}`);
-  cell(row, `vs ${opp}`);
-  cell(row, m.mode === 'ranked' ? 'Ranked' : m.mode === 'quick' ? 'Quick' : 'Room');
+  cell(row, t('vs {name}', { name: opp }));
+  cell(row, t(m.mode === 'ranked' ? 'Ranked' : m.mode === 'quick' ? 'Quick' : 'Room'));
   const r = m.ratings?.[m.side];
   // A ranked match the server rejected inputs in doesn't count.
-  cell(row, r ? `${r[1]} (${r[1] - r[0] >= 0 ? '+' : ''}${r[1] - r[0]})` : m.mode === 'ranked' ? 'not rated' : '');
+  cell(row, r ? `${r[1]} (${r[1] - r[0] >= 0 ? '+' : ''}${r[1] - r[0]})` : m.mode === 'ranked' ? t('not rated') : '');
   const replay = document.createElement('button');
-  replay.textContent = 'Replay';
-  replay.title = 'Download this match as a replay file';
+  replay.textContent = t('Replay');
+  replay.title = t('Download this match as a replay file');
   replay.addEventListener('click', () => void downloadOnlineReplay(m.id));
   row.insertCell().append(replay);
 }
@@ -1040,21 +1053,24 @@ async function openProfile(): Promise<void> {
     const r = profile.rating;
     $('profile-rating').textContent = r.settled ? String(r.rating) : `${r.rating} ± ${r.rd}`;
     const losses = profile.games - profile.wins;
-    const place = profile.rank ? `#${profile.rank} on the leaderboard` : r.settled ? 'Not on the leaderboard yet' : 'Provisional rating: play more ranked matches to settle it';
-    $('profile-detail').textContent = `${profile.games} ranked ${profile.games === 1 ? 'match' : 'matches'} · ${profile.wins} won, ${losses} lost · ${REGION_NAMES[profile.region]} · ${place}`;
-    if (profile.recent.length === 0) cell(matches.insertRow(), 'No online matches yet.');
+    const place = profile.rank
+      ? t('#{rank} on the leaderboard', { rank: profile.rank })
+      : t(r.settled ? 'Not on the leaderboard yet' : 'Provisional rating: play more ranked matches to settle it');
+    const detail = profile.games === 1 ? '{games} ranked match · {wins} won, {losses} lost · {region} · {place}' : '{games} ranked matches · {wins} won, {losses} lost · {region} · {place}';
+    $('profile-detail').textContent = t(detail, { games: profile.games, wins: profile.wins, losses, region: t(REGION_NAMES[profile.region]), place });
+    if (profile.recent.length === 0) cell(matches.insertRow(), t('No online matches yet.'));
     for (const m of profile.recent) matchRow(matches, m);
-    if (leaders.length === 0) cell(board.insertRow(), 'Nobody has a settled rating yet.');
+    if (leaders.length === 0) cell(board.insertRow(), t('Nobody has a settled rating yet.'));
     for (const e of leaders) {
       const row = board.insertRow();
       cell(row, `#${e.rank}`);
       cell(row, e.name, e.name === me.name ? 'win' : '');
       cell(row, String(e.rating));
-      cell(row, REGION_NAMES[e.region]);
+      cell(row, t(REGION_NAMES[e.region]));
     }
   } catch (e) {
     $('profile-rating').textContent = '';
-    $('profile-detail').textContent = e instanceof Error ? e.message : String(e);
+    $('profile-detail').textContent = t(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -1078,7 +1094,7 @@ function refreshControlsTable(): void {
   const head = table.insertRow();
   const th = document.createElement('th');
   th.colSpan = 2;
-  th.textContent = 'Sprint, bots and online';
+  th.textContent = t('Sprint, bots and online');
   head.append(th);
   const rows: [string, string][] = [
     ['Move', `${keysText(prefs.keys.left)} / ${keysText(prefs.keys.right)}`],
@@ -1092,7 +1108,7 @@ function refreshControlsTable(): void {
   ];
   for (const [name, keys] of rows) {
     const row = table.insertRow();
-    cell(row, name);
+    cell(row, t(name));
     cell(row, keys);
   }
 }
@@ -1127,7 +1143,7 @@ function buildCustomize(): void {
     const img = document.createElement('img');
     img.src = characterUrl(id, prefs.look.character === id ? 'win' : 'idle');
     img.alt = '';
-    b.append(img, CHARACTER_NAMES[id]);
+    b.append(img, t(CHARACTER_NAMES[id]));
   }
 
   const skins = $('skin-pick');
@@ -1142,12 +1158,12 @@ function buildCustomize(): void {
     preview.height = 64;
     const c = preview.getContext('2d')!;
     for (let i = 1; i <= 7; i++) drawCell(c, skinSheet(id), i, (i - 1) * 32, 0, 32);
-    b.append(preview, SKIN_NAMES[id]);
+    b.append(preview, t(SKIN_NAMES[id]));
     const earned = EARNED_SKINS[id];
     if (earned) {
       const note = document.createElement('span');
       note.className = 'lock';
-      note.textContent = allowed ? 'Earned' : `Locked: ${earned.toLowerCase()}`;
+      note.textContent = allowed ? t('Earned') : t('Locked: {how}', { how: t(earned).toLowerCase() });
       b.append(note);
     }
   }
@@ -1156,12 +1172,12 @@ function buildCustomize(): void {
   themes.innerHTML = '';
   for (const id of THEMES) {
     const b = pickButton(themes, prefs.theme === id, () => (prefs = { ...prefs, theme: id }));
-    b.textContent = THEME_NAMES[id];
+    b.textContent = t(THEME_NAMES[id]);
   }
 
   $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
   $<HTMLInputElement>('volume').value = String(prefs.volume);
-  $('volume-out').textContent = prefs.volume === 0 ? 'off' : `${prefs.volume}%`;
+  $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
 }
 
 $('open-customize').addEventListener('click', openCustomize);
@@ -1173,7 +1189,7 @@ $<HTMLInputElement>('plain-opponent').addEventListener('change', (e) => {
 $<HTMLInputElement>('volume').addEventListener('input', (e) => {
   prefs = { ...prefs, volume: Number((e.target as HTMLInputElement).value) };
   sound.setVolume(prefs.volume);
-  $('volume-out').textContent = prefs.volume === 0 ? 'off' : `${prefs.volume}%`;
+  $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
 });
 // A sample of the sound at the new volume.
 $<HTMLInputElement>('volume').addEventListener('change', () => sound.impact('apple', false, 0));
@@ -1198,13 +1214,13 @@ function buildKeymap(): void {
   table.innerHTML = '';
   for (const key of KEYS) {
     const row = table.insertRow();
-    cell(row, ACTION_NAMES[key]);
+    cell(row, t(ACTION_NAMES[key]));
     const td = row.insertCell();
     for (const code of prefs.keys[key]) {
       const b = document.createElement('button');
       b.className = 'key';
       b.textContent = keyLabel(code);
-      b.title = 'Remove this key';
+      b.title = t('Remove this key');
       b.addEventListener('click', () => {
         prefs = { ...prefs, keys: { ...prefs.keys, [key]: prefs.keys[key].filter((c) => c !== code) } };
         buildKeymap();
@@ -1213,9 +1229,9 @@ function buildKeymap(): void {
     }
     if (prefs.keys[key].length < MAX_KEYS_PER_ACTION) {
       const add = document.createElement('button');
-      add.textContent = listening === key ? 'Press a key…' : '+';
+      add.textContent = listening === key ? t('Press a key…') : '+';
       add.classList.toggle('listening', listening === key);
-      add.title = 'Add a key';
+      add.title = t('Add a key');
       add.addEventListener('click', () => {
         listening = listening === key ? null : key;
         buildKeymap();
@@ -1224,9 +1240,10 @@ function buildKeymap(): void {
     }
   }
   const empty = KEYS.filter((k) => prefs.keys[k].length === 0);
+  const actions = empty.map((k) => t(ACTION_NAMES[k])).join(', ');
   $('keymap-hint').textContent = empty.length
-    ? `${empty.map((k) => ACTION_NAMES[k]).join(', ')} ${empty.length === 1 ? 'has' : 'have'} no key yet: ${empty.length === 1 ? 'it gets its' : 'they get their'} default back when you leave.`
-    : 'Click + to add a key, or a key to remove it. Each action can have up to 3 keys. Esc, Enter, Tab and R are kept for the menus.';
+    ? t(empty.length === 1 ? '{actions} has no key yet: it gets its default back when you leave.' : '{actions} have no key yet: they get their default back when you leave.', { actions })
+    : t('Click + to add a key, or a key to remove it. Each action can have up to 3 keys. Esc, Enter, Tab and R are kept for the menus.');
 }
 
 /** A key pressed while the controls screen waits for one. */

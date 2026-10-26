@@ -8,6 +8,7 @@ import {
   type PieceType,
 } from '@line-battle/engine';
 import type { CharacterView } from './character';
+import { t } from './i18n';
 import { drawCell, PIECE_COLORS, skinSheet, THEME_COLORS, type SkinSheet, type Theme } from './skins';
 
 const CELL = 30;
@@ -368,7 +369,7 @@ export class Renderer {
     c.font = `600 13px ${FONT}`;
     c.textAlign = align;
     c.textBaseline = 'alphabetic';
-    c.fillText(text, x, y);
+    c.fillText(t(text), x, y);
   }
 
   private panel(x: number, y: number, w: number, h: number): void {

@@ -1,4 +1,5 @@
 import { Client, type Room } from '@colyseus/sdk';
+import { t } from './i18n';
 import {
   BATTLE_ROOM,
   DEFAULT_LOOK,
@@ -128,9 +129,9 @@ export class OnlineMatch {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.setPhase('closed');
-      if (/server is full/i.test(msg)) this.events.error(msg);
-      else if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(`No open room with code ${how.code.toUpperCase()}.`);
-      else this.events.error(`Can't reach the match server (${SERVER_URL}). Is it running?`);
+      if (/server is full/i.test(msg)) this.events.error(t('The server is full right now. Try again in a minute, or use Quick match to wait in line.'));
+      else if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(t('No open room with code {code}.', { code: how.code.toUpperCase() }));
+      else this.events.error(t("Can't reach the match server ({url}). Is it running?", { url: SERVER_URL }));
     }
   }
 
@@ -144,7 +145,7 @@ export class OnlineMatch {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.setPhase('closed');
-      this.events.error(/log in/i.test(msg) ? 'Log in to play ranked.' : `Can't reach the match server (${SERVER_URL}). Is it running?`);
+      this.events.error(/log in/i.test(msg) ? t('Log in to play ranked.') : t("Can't reach the match server ({url}). Is it running?", { url: SERVER_URL }));
       return;
     }
     if (this.left) return void queue.leave(true);
@@ -163,7 +164,7 @@ export class OnlineMatch {
         else this.attach(room);
       } catch {
         this.setPhase('closed');
-        this.events.error('The match could not start. Try again.');
+        this.events.error(t('The match could not start. Try again.'));
       }
       this.queue = null;
       void queue.leave(true);
@@ -172,7 +173,7 @@ export class OnlineMatch {
       if (matched || this.left) return;
       this.queue = null;
       this.setPhase('closed');
-      this.events.error(code === 4000 ? 'You joined the queue from another tab.' : 'Lost the connection to the match server.');
+      this.events.error(t(code === 4000 ? 'You joined the queue from another tab.' : 'Lost the connection to the match server.'));
     });
   }
 
@@ -263,7 +264,7 @@ export class OnlineMatch {
       this.room = null;
       if (this.left || this.phase === 'matchEnd') return;
       this.setPhase('closed');
-      this.events.error('Lost the connection to the match server.');
+      this.events.error(t('Lost the connection to the match server.'));
     });
   }
 
