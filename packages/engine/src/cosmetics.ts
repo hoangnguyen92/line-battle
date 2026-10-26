@@ -76,6 +76,8 @@ export interface Prefs {
   keys: KeyMap;
   /** Sound effects volume, 0-100. */
   volume: number;
+  /** Background music volume, 0-100. */
+  music: number;
   /** Draw the opponent's board in the default skin. */
   plainOpponent: boolean;
   /** The tutorial was finished or skipped. */
@@ -87,6 +89,7 @@ export const DEFAULT_PREFS: Prefs = {
   theme: 'night',
   keys: DEFAULT_KEYS,
   volume: 70,
+  music: 50,
   plainOpponent: false,
   tutorialDone: false,
 };
@@ -130,12 +133,13 @@ export function sanitizeKeys(v: unknown): KeyMap {
 
 export function sanitizePrefs(v: unknown): Prefs {
   const src = (v ?? {}) as Record<string, unknown>;
-  const volume = typeof src.volume === 'number' && Number.isFinite(src.volume) ? Math.min(100, Math.max(0, Math.round(src.volume))) : DEFAULT_PREFS.volume;
+  const percent = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(100, Math.max(0, Math.round(v))) : fallback);
   return {
     look: sanitizeLook(src.look),
     theme: oneOf(THEMES, src.theme, DEFAULT_PREFS.theme),
     keys: sanitizeKeys(src.keys),
-    volume,
+    volume: percent(src.volume, DEFAULT_PREFS.volume),
+    music: percent(src.music, DEFAULT_PREFS.music),
     plainOpponent: src.plainOpponent === true,
     tutorialDone: src.tutorialDone === true,
   };

@@ -43,6 +43,7 @@ import { ACTION_NAMES, bindingsFrom, Keyboard, keyLabel, keysText, P1_BINDINGS, 
 import { describeEnd, OnlineMatch, type JoinKind, type OnlinePhase } from './online';
 import { formatTime, Renderer, type Popup } from './render';
 import { drawCell, skinSheet, THEME_COLORS } from './skins';
+import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
@@ -76,7 +77,7 @@ const MAX_CATCH_UP = 8;
 /** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
 type Mode = 'sprint' | 'versus' | 'bot' | 'online' | 'tutorial';
 /** 'lobby' covers connecting, waiting for an opponent and connection errors. */
-type Screen = 'menu' | 'settings' | 'customize' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
+type Screen = 'menu' | 'settings' | 'customize' | 'sound' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -88,6 +89,8 @@ let prefs = loadPrefs();
 const soloKeys = new Keyboard(bindingsFrom(prefs.keys));
 const sound = new Sound();
 sound.setVolume(prefs.volume);
+const music = new Music();
+music.setVolume(prefs.music);
 preloadArt();
 const versusKeys = [new Keyboard(P1_BINDINGS), new Keyboard(P2_BINDINGS)] as const;
 const allKeyboards = [soloKeys, ...versusKeys];
@@ -142,6 +145,7 @@ function show(next: Screen): void {
   $('menu').classList.toggle('hidden', next !== 'menu');
   $('settings').classList.toggle('hidden', next !== 'settings');
   $('customize').classList.toggle('hidden', next !== 'customize');
+  $('sound').classList.toggle('hidden', next !== 'sound');
   $('controls').classList.toggle('hidden', next !== 'controls');
   $('tutorial-tip').classList.toggle('hidden', mode !== 'tutorial' || !inGameScreen(next));
   $('result').classList.toggle('hidden', next !== 'result');
@@ -698,6 +702,8 @@ function describeClear(info: ClearInfo): string[] {
 function frame(now: number): void {
   const elapsed = now - lastFrame;
   lastFrame = now;
+  // The upbeat track during play, the calm one everywhere else.
+  music.play(sound.context, prefs.music === 0 ? null : inGame() ? 'match' : 'menu');
   if (mode === 'online' && online) {
     const m = online;
     m.update(now, () => {
@@ -773,6 +779,7 @@ addEventListener('keydown', (e) => {
     e.preventDefault();
     if (screen === 'settings') return closeSettings();
     if (screen === 'customize') return closeCustomize();
+    if (screen === 'sound') return closeSound();
     if (screen === 'controls') return closeControls();
     if (mode === 'tutorial' && tutorial && !tutorial.finished) finishTutorial();
     if (screen === 'account' || screen === 'profile') return show('menu');
@@ -1081,6 +1088,7 @@ function setPrefs(next: typeof prefs, store = true): void {
   prefs = next;
   soloKeys.setBindings(bindingsFrom(prefs.keys));
   sound.setVolume(prefs.volume);
+  music.setVolume(prefs.music);
   applyLooks();
   refreshControlsTable();
   if (store) storePrefs();
@@ -1176,12 +1184,25 @@ function buildCustomize(): void {
   }
 
   $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
+}
+
+function openSound(): void {
   $<HTMLInputElement>('volume').value = String(prefs.volume);
   $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
+  $<HTMLInputElement>('music').value = String(prefs.music);
+  $('music-out').textContent = prefs.music === 0 ? t('off') : `${prefs.music}%`;
+  show('sound');
+}
+
+function closeSound(): void {
+  storePrefs();
+  show('menu');
 }
 
 $('open-customize').addEventListener('click', openCustomize);
 $('close-customize').addEventListener('click', closeCustomize);
+$('open-sound').addEventListener('click', openSound);
+$('close-sound').addEventListener('click', closeSound);
 $<HTMLInputElement>('plain-opponent').addEventListener('change', (e) => {
   prefs = { ...prefs, plainOpponent: (e.target as HTMLInputElement).checked };
   applyLooks();
@@ -1190,6 +1211,11 @@ $<HTMLInputElement>('volume').addEventListener('input', (e) => {
   prefs = { ...prefs, volume: Number((e.target as HTMLInputElement).value) };
   sound.setVolume(prefs.volume);
   $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
+});
+$<HTMLInputElement>('music').addEventListener('input', (e) => {
+  prefs = { ...prefs, music: Number((e.target as HTMLInputElement).value) };
+  music.setVolume(prefs.music);
+  $('music-out').textContent = prefs.music === 0 ? t('off') : `${prefs.music}%`;
 });
 // A sample of the sound at the new volume.
 $<HTMLInputElement>('volume').addEventListener('change', () => sound.impact('apple', false, 0));
