@@ -19,7 +19,7 @@ import {
   type Region,
   type ServerMessages,
 } from '@line-battle/engine';
-import { BattleRoom, QueueRoom, setStore, Store } from '../src';
+import { BattleRoom, DEFAULT_MAX_PLAYERS, playersInMatches, QueueRoom, setMaxPlayers, setStore, Store } from '../src';
 import { newToken } from '../src/passwords';
 
 let server: Server;
@@ -312,4 +312,37 @@ describe('battle room', () => {
     expect(end).toEqual({ winner: 1, score: [0, 2], reason: 'topOut' });
     await Promise.all([hostRoom.leave(), guest.room.leave()]);
   }, 30_000);
+
+  it('over the player cap, the queue waits for a free slot and private rooms are refused', async () => {
+    await until(() => playersInMatches() === 0);
+    setMaxPlayers(2);
+    try {
+      const qa = await enqueue('quick', 'Cap1');
+      const qb = await enqueue('quick', 'Cap2');
+      const [a, b] = await Promise.all([qa.matched, qb.matched]);
+      const qc = await enqueue('quick', 'Cap3');
+      const qd = await enqueue('quick', 'Cap4');
+      let started = false;
+      void qc.matched.then(() => (started = true));
+      await until(() => qc.status.some((s) => s.serverFull));
+      expect(qc.status.at(-1)).toMatchObject({ serverFull: true, playing: 2 });
+      expect(started).toBe(false);
+      await expect(new Client(url).create(BATTLE_ROOM, opts('private', 'Late'))).rejects.toThrow(/full/i);
+      // Both leave the first match: their slots free up and the waiting pair starts.
+      await Promise.all([a.room.leave(), b.room.leave()]);
+      const [c, d] = await Promise.all([qc.matched, qd.matched]);
+      expect(c.room.roomId).toBe(d.room.roomId);
+      await Promise.all([c.room.leave(), d.room.leave()]);
+    } finally {
+      setMaxPlayers(DEFAULT_MAX_PLAYERS);
+    }
+  }, 30_000);
 });
+
+async function until(check: () => boolean, ms = 10_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error('timed out');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}

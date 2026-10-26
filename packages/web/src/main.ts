@@ -460,7 +460,9 @@ function queueText(m: OnlineMatch): string {
   const secs = Math.floor(s.waitedMs / 1000);
   const where = s.anyRegion ? 'any region' : REGION_NAMES[s.region];
   const others = s.inQueue > 1 ? `${s.inQueue - 1} other ${s.inQueue === 2 ? 'player' : 'players'} searching` : 'nobody else searching yet';
-  return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} · rating ${s.rating} ± ${s.range} · ${where} · ${others}`;
+  const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  if (s.serverFull) return `${clock} · The server is full (${s.playing ?? '?'} playing). You're in line: your match starts as soon as a slot opens.`;
+  return `${clock} · rating ${s.rating} ± ${s.range} · ${where} · ${others}`;
 }
 
 function leaveOnline(): void {

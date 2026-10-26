@@ -128,7 +128,8 @@ export class OnlineMatch {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.setPhase('closed');
-      if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(`No open room with code ${how.code.toUpperCase()}.`);
+      if (/server is full/i.test(msg)) this.events.error(msg);
+      else if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(`No open room with code ${how.code.toUpperCase()}.`);
       else this.events.error(`Can't reach the match server (${SERVER_URL}). Is it running?`);
     }
   }

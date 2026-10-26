@@ -11,6 +11,7 @@ import {
   type QueueMessages,
   type Region,
 } from '@line-battle/engine';
+import { freeSlots, playersInMatches, releaseSlots, takeSlots } from './capacity';
 import { DEFAULT_RATING } from './glicko';
 import { getStore } from './services';
 import type { User } from './store';
@@ -57,6 +58,8 @@ export class QueueRoom extends Room {
   private entries: Entry[] = [];
   private anyRegionAfterMs = ANY_REGION_AFTER_MS;
   private pairing = false;
+  /** The player cap held back a pair on the last pass (or no slot is free). */
+  private full = false;
 
   onCreate(options: QueueRoomOptions = {}): void {
     this.anyRegionAfterMs = options.anyRegionAfterMs ?? ANY_REGION_AFTER_MS;
@@ -144,8 +147,11 @@ export class QueueRoom extends Room {
           pairs.push([e, best]);
         }
       }
-      for (const pair of pairs) for (const e of pair) this.remove(e.client);
-      await Promise.all(pairs.map((p) => this.startMatch(p)));
+      // Over the player cap, the longest waiting pairs go first and the rest wait for a slot.
+      const starting = pairs.filter(() => takeSlots(2));
+      this.full = starting.length < pairs.length || freeSlots() < 2;
+      for (const pair of starting) for (const e of pair) this.remove(e.client);
+      await Promise.all(starting.map((p) => this.startMatch(p)));
     } finally {
       this.pairing = false;
     }
@@ -153,14 +159,17 @@ export class QueueRoom extends Room {
 
   private async startMatch(pair: [Entry, Entry]): Promise<void> {
     const [a] = pair;
+    let room: Awaited<ReturnType<typeof matchMaker.createRoom>> | null = null;
     try {
-      const room = await matchMaker.createRoom(BATTLE_ROOM, { mode: a.kind, region: a.region });
+      room = await matchMaker.createRoom(BATTLE_ROOM, { mode: a.kind, region: a.region, heldSlots: 2 });
       for (const e of pair) {
         const reservation = await matchMaker.reserveSeatFor(room, { name: e.name, handling: e.handling, look: e.look }, { user: e.user, queued: true });
         this.tell(e, 'matched', { reservation });
       }
     } catch (err) {
       console.error('queue: could not start a match', err);
+      // A room that was made gives its slots back when it closes; otherwise give them back here.
+      if (!room) releaseSlots(2);
       // Put them back at the front, so the next pass tries again.
       for (const e of pair) if (this.clients.some((c) => c.sessionId === e.client.sessionId)) this.entries.push(e);
     }
@@ -179,6 +188,8 @@ export class QueueRoom extends Room {
       range: Math.round(this.range(e, now)),
       anyRegion: this.anyRegion(e, now),
       inQueue: this.entries.filter((x) => x.kind === e.kind).length,
+      serverFull: this.full,
+      playing: playersInMatches(),
     });
   }
 
