@@ -12,6 +12,10 @@ services:
     environment:
       # Most players in online matches at once; the rest wait in the queue.
       MAX_PLAYERS: ${MAX_PLAYERS:-500}
+      # Card payments for gems; off until all three are set in .env.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SITE_URL: ${SITE_URL:-}
 
   web:
     build: { context: ., target: web }

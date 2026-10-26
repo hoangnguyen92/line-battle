@@ -6,10 +6,16 @@ import {
   NAME_PATTERN,
   sanitizeHandling,
   sanitizePrefs,
+  GEM_PACKS,
+  SHOP_ITEMS,
+  shopItem,
+  type CheckoutResponse,
   type Me,
   type SessionResponse,
+  type ShopInfo,
 } from '@line-battle/engine';
 import { checkPassword, hashPassword, newToken } from './passwords';
+import type { PaymentProvider } from './payments';
 import type { Store, User } from './store';
 
 export interface ApiRequest {
@@ -20,6 +26,10 @@ export interface ApiRequest {
   token: string | null;
   body: unknown;
   ip: string;
+  /** The body exactly as sent, for payment webhooks whose signature covers it. */
+  rawBody?: string;
+  /** A payment provider's signature header (Stripe-Signature). */
+  signature?: string | null;
 }
 
 export interface ApiResponse {
@@ -63,7 +73,11 @@ class RateLimiter {
 export class Api {
   private limiter: RateLimiter;
 
-  constructor(private store: Store, now: () => number = Date.now) {
+  constructor(
+    private store: Store,
+    now: () => number = Date.now,
+    private payments: PaymentProvider[] = [],
+  ) {
     this.limiter = new RateLimiter(AUTH_ATTEMPTS, AUTH_WINDOW_MS, now);
   }
 
@@ -90,6 +104,12 @@ export class Api {
       const profile = this.store.profile(b);
       return profile ? ok(profile) : fail(404, 'No player with that name.');
     }
+    if (method === 'GET' && a === 'shop' && parts.length === 1) {
+      return ok({ items: SHOP_ITEMS, packs: GEM_PACKS, payments: this.payments.map((p) => p.name) } satisfies ShopInfo);
+    }
+    if (method === 'POST' && a === 'shop' && b === 'checkout' && parts.length === 2) return this.checkout(req);
+    if (method === 'POST' && a === 'pay' && b && c === 'webhook' && parts.length === 3) return this.webhook(b, req);
+    if (method === 'POST' && a === 'shop' && b === 'buy' && parts.length === 2) return this.withUser(req, (u) => this.buy(u, req.body));
     if (method === 'GET' && a === 'leaderboard' && parts.length === 1) return ok(this.store.leaderboard());
     if (method === 'GET' && a === 'matches' && b && c === 'replay' && parts.length === 3) {
       const id = Number(b);
@@ -148,6 +168,39 @@ export class Api {
     return ok(this.store.me(this.store.userById(user.id)!));
   }
 
+  private buy(user: User, body: unknown): ApiResponse {
+    const item = shopItem(((body ?? {}) as Record<string, unknown>).item);
+    if (!item) return fail(404, 'No such item.');
+    const result = this.store.buy(user.id, item.id);
+    if (result === 'not-for-sale') return fail(400, "That item isn't for sale.");
+    if (result === 'not-enough-gems') return fail(402, 'Not enough gems.');
+    // Already owned is fine: a double click shouldn't show an error.
+    return ok(this.store.me(this.store.userById(user.id)!));
+  }
+
+  private async checkout(req: ApiRequest): Promise<ApiResponse> {
+    const user = this.store.userForToken(req.token);
+    if (!user) return fail(401, 'Please log in again.');
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const provider = this.payments.find((p) => p.name === body.provider) ?? this.payments[0];
+    if (!provider) return fail(503, "Buying gems isn't open yet.");
+    const pack = GEM_PACKS.find((p) => p.id === body.pack);
+    if (!pack) return fail(404, 'No such gem pack.');
+    if (!this.limiter.allow(`checkout:${user.id}`)) return fail(429, 'Too many attempts. Wait a minute and try again.');
+    try {
+      return ok({ url: await provider.checkout(user, pack, body.currency === 'usd' ? 'usd' : 'vnd') } satisfies CheckoutResponse);
+    } catch (e) {
+      console.error(`${provider.name} checkout failed`, e);
+      return fail(502, "Couldn't start the payment. Try again in a minute.");
+    }
+  }
+
+  private webhook(name: string, req: ApiRequest): ApiResponse {
+    const provider = this.payments.find((p) => p.name === name);
+    if (!provider || req.rawBody === undefined) return fail(404, 'Not found.');
+    return provider.handleWebhook(req.rawBody, req.signature ?? null) ? ok({ received: true }) : fail(400, 'Bad signature.');
+  }
+
   private startSession(userId: number): SessionResponse {
     const token = newToken();
     this.store.createSession(userId, token);
@@ -169,14 +222,18 @@ export function clientIp(headers: Headers): string {
 
 /** Mounts the API under /api on the Colyseus server's router. */
 export function apiEndpoint(api: Api) {
-  return createEndpoint('/api/**', { method: ['GET', 'POST'], requireRequest: true }, async (ctx) => {
+  // cloneRequest leaves the original body unread, for webhooks that need it byte for byte.
+  return createEndpoint('/api/**', { method: ['GET', 'POST'], requireRequest: true, cloneRequest: true }, async (ctx) => {
     const request = ctx.request as Request;
+    const path = new URL(request.url).pathname;
     const res = await api.handle({
       method: request.method,
-      path: new URL(request.url).pathname,
+      path,
       token: bearer(request.headers.get('authorization')),
       body: ctx.body,
       ip: clientIp(request.headers),
+      rawBody: path.startsWith('/api/pay/') ? await request.text() : undefined,
+      signature: request.headers.get('stripe-signature'),
     });
     return new Response(JSON.stringify(res.body), {
       status: res.status,

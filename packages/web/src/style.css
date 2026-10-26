@@ -223,3 +223,14 @@ label.check { flex-direction: row; align-items: center; gap: 8px; width: auto; }
   .tip { top: 50%; left: max(16px, calc(50% - 600px)); transform: translateY(-50%); width: 270px; }
   @keyframes pop { 0% { transform: translateY(-50%) scale(1.06); } 100% { transform: translateY(-50%) scale(1); } }
 }
+
+/* ---- the shop ---- */
+.gem-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: center; max-width: 620px; }
+.gem-bar strong { margin-right: 6px; }
+.gem-bar button { padding: 4px 12px; font-size: 13px; }
+.shop-note { margin: 0; min-height: 1.2em; font-size: 14px; color: #ffd27d; max-width: 560px; text-align: center; }
+.pick-grid button.for-sale img, .pick-grid button.for-sale canvas { opacity: 0.7; }
+button.for-sale { border-style: dashed; }
+button.for-sale.confirming { border-style: solid; border-color: #ffd27d; box-shadow: 0 0 0 2px #ffd27d; }
+.price { color: #ffd27d; font-size: 12px; font-weight: 600; }
+.result-gems { margin: 0; font-size: 16px; font-weight: 600; color: #ffd27d; }

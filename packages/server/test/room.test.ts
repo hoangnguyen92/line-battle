@@ -99,7 +99,7 @@ class Player {
     room.reconnection.minUptime = 0;
     room.onDrop(() => (this.connected = false));
     room.onReconnect(() => (this.connected = true));
-    for (const type of ['waiting', 'match', 'round', 'garbage', 'opp', 'resync', 'oppStatus', 'roundEnd', 'matchEnd', 'rematch', 'rating', 'saved'] as const) {
+    for (const type of ['waiting', 'match', 'round', 'garbage', 'opp', 'resync', 'oppStatus', 'roundEnd', 'matchEnd', 'rematch', 'rating', 'gems', 'saved'] as const) {
       room.onMessage(type, (msg: never) => {
         (this.got[type] ??= [] as never[]).push(msg);
         if (type === 'round') this.startRound(msg as ServerMessages['round']);
@@ -143,7 +143,7 @@ class Player {
   }
 }
 
-const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING, look: { character: name === 'Host' ? 'mochi' : 'bao', skin: 'neon' } });
+const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING, look: { character: name === 'Host' ? 'mochi' : 'bao', skin: name === 'Host' ? 'flat' : 'neon' } });
 
 describe('battle room', () => {
   it('runs a private room match to the end, first to 2', async () => {
@@ -158,7 +158,8 @@ describe('battle room', () => {
     const [match] = await guest.waitFor('match');
     expect(match.you).toBe(1);
     expect(match.names).toEqual(['Host', 'Guest b']);
-    expect(match.looks).toEqual([{ character: 'mochi', skin: 'neon' }, { character: 'bao', skin: 'neon' }]);
+    // The guest hasn't bought neon, so the opponent sees the default skin.
+    expect(match.looks).toEqual([{ character: 'mochi', skin: 'flat' }, { character: 'bao', skin: 'gem' }]);
 
     const [end] = await host.waitFor('matchEnd');
     expect(end).toEqual({ winner: 1, score: [0, 2], reason: 'topOut' });
@@ -242,6 +243,9 @@ describe('battle room', () => {
     expect(up.after.rating).toBeGreaterThan(1500);
     expect(down.after.rating).toBeLessThan(1500);
     expect(up.after.rd).toBeLessThan(350);
+    // Gems for playing: a first win of the day, and a finished loss.
+    expect((await winner.waitFor('gems'))[0]).toEqual({ earned: 45, total: 45 });
+    expect((await loser.waitFor('gems'))[0]).toEqual({ earned: 5, total: 5 });
 
     // No rematch in ranked: asking does nothing.
     loser.room.send('rematch');

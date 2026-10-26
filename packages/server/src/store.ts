@@ -15,9 +15,21 @@ import {
   type PublicRating,
   type RatingChange,
   type Region,
+  type ItemId,
+  shopItem,
+  forSale,
+  MATCH_GEMS,
 } from '@line-battle/engine';
 import { DEFAULT_RATING, idleRd, PERIOD_MS, rateMatch, type Rating } from './glicko';
 import { tokenHash } from './passwords';
+
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Midnight in Vietnam (UTC+7, no daylight saving) at the start of the day `t` falls in. */
+export function vnDayStart(t: number): number {
+  return Math.floor((t + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS;
+}
 
 /** A rating counts for the leaderboard once its deviation is this low. */
 export const SETTLED_RD = 110;
@@ -37,7 +49,13 @@ export interface User {
   rating: Rating;
   games: number;
   wins: number;
+  gems: number;
+  /** Items bought in the shop. */
+  owned: ItemId[];
 }
+
+/** Why a purchase didn't go through. */
+export type BuyResult = 'ok' | 'owned' | 'not-for-sale' | 'not-enough-gems';
 
 interface UserRow {
   id: number;
@@ -52,6 +70,7 @@ interface UserRow {
   rated_at: number | null;
   games: number;
   wins: number;
+  gems: number;
 }
 
 interface MatchRow {
@@ -129,6 +148,25 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 CREATE INDEX IF NOT EXISTS matches_user0 ON matches(user0, ended_at);
 CREATE INDEX IF NOT EXISTS matches_user1 ON matches(user1, ended_at);
+CREATE TABLE IF NOT EXISTS owned (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, item)
+);
+-- Every change to a player's gems, so a balance can always be explained.
+-- ref is unique, so a payment that is reported twice only counts once.
+CREATE TABLE IF NOT EXISTS gem_ledger (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  delta INTEGER NOT NULL,
+  balance INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  ref TEXT UNIQUE,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS gem_ledger_user ON gem_ledger(user_id, at);
 `;
 
 /**
@@ -152,6 +190,7 @@ export class Store {
   private migrate(): void {
     const columns = (this.db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
     if (!columns.includes('prefs')) this.db.exec('ALTER TABLE users ADD COLUMN prefs TEXT');
+    if (!columns.includes('gems')) this.db.exec('ALTER TABLE users ADD COLUMN gems INTEGER NOT NULL DEFAULT 0');
   }
 
   close(): void {
@@ -205,6 +244,8 @@ export class Store {
       rating: publicRating(user.rating),
       games: user.games,
       wins: user.wins,
+      gems: user.gems,
+      owned: user.owned,
     };
   }
 
@@ -228,7 +269,102 @@ export class Store {
       rating: { ...stored, rd: idleRd(stored, idle) },
       games: row.games,
       wins: row.wins,
+      gems: row.gems,
+      owned: this.ownedItems(row.id),
     };
+  }
+
+  // ---- the shop ---------------------------------------------------------
+
+  private ownedItems(userId: number): ItemId[] {
+    const rows = this.db.prepare('SELECT item FROM owned WHERE user_id = ? ORDER BY at, item').all(userId) as { item: string }[];
+    return rows.map((r) => r.item as ItemId);
+  }
+
+  /** Name to id, for the admin scripts. */
+  userIdByName(name: string): number | null {
+    const row = this.db.prepare('SELECT id FROM users WHERE name = ?').get(name) as { id: number } | undefined;
+    return row?.id ?? null;
+  }
+
+  /**
+   * Adds (or with a negative delta, takes) gems. `ref` identifies where they
+   * came from, such as a payment id: the same ref twice is ignored, and this
+   * returns false. The balance never goes below zero.
+   */
+  addGems(userId: number, delta: number, reason: string, ref: string | null = null): boolean {
+    if (!Number.isInteger(delta)) throw new Error('gems must be whole');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (ref !== null && this.db.prepare('SELECT 1 FROM gem_ledger WHERE ref = ?').get(ref)) {
+        this.db.exec('ROLLBACK');
+        return false;
+      }
+      const row = this.db.prepare('SELECT gems FROM users WHERE id = ?').get(userId) as { gems: number } | undefined;
+      if (!row) throw new Error(`no user ${userId}`);
+      const balance = Math.max(0, row.gems + delta);
+      this.db.prepare('UPDATE users SET gems = ? WHERE id = ?').run(balance, userId);
+      this.db
+        .prepare('INSERT INTO gem_ledger (user_id, delta, balance, reason, ref, at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(userId, balance - row.gems, balance, reason, ref, this.now());
+      this.db.exec('COMMIT');
+      return true;
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  /**
+   * Gems for playing a match: a win, a finished loss and the day's first
+   * win pay, up to the daily cap. Returns how many were added.
+   */
+  rewardMatch(userId: number, won: boolean, finished: boolean): number {
+    if (!won && !finished) return 0;
+    const dayStart = vnDayStart(this.now());
+    const today = this.db
+      .prepare("SELECT coalesce(sum(delta), 0) AS earned, coalesce(sum(reason = 'match win'), 0) AS wins FROM gem_ledger WHERE user_id = ? AND at >= ? AND reason LIKE 'match %'")
+      .get(userId, dayStart) as { earned: number; wins: number };
+    let gems = won ? MATCH_GEMS.win + (today.wins === 0 ? MATCH_GEMS.firstWin : 0) : MATCH_GEMS.loss;
+    gems = Math.min(gems, MATCH_GEMS.dailyCap - today.earned);
+    if (gems <= 0) return 0;
+    this.addGems(userId, gems, won ? 'match win' : 'match loss');
+    return gems;
+  }
+
+  /** The ledger line for a ref, e.g. to undo a refunded payment. */
+  ledgerEntry(ref: string): { userId: number; delta: number } | null {
+    const row = this.db.prepare('SELECT user_id, delta FROM gem_ledger WHERE ref = ?').get(ref) as { user_id: number; delta: number } | undefined;
+    return row ? { userId: row.user_id, delta: row.delta } : null;
+  }
+
+  /** Buys a shop item with gems, all or nothing. */
+  buy(userId: number, itemId: ItemId): BuyResult {
+    const item = shopItem(itemId);
+    if (!item || !forSale(item)) return 'not-for-sale';
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = this.buyInside(userId, item.id, item.price);
+      this.db.exec(result === 'ok' ? 'COMMIT' : 'ROLLBACK');
+      return result;
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  private buyInside(userId: number, item: ItemId, price: number): BuyResult {
+    if (this.db.prepare('SELECT 1 FROM owned WHERE user_id = ? AND item = ?').get(userId, item)) return 'owned';
+    const row = this.db.prepare('SELECT gems FROM users WHERE id = ?').get(userId) as { gems: number } | undefined;
+    if (!row || row.gems < price) return 'not-enough-gems';
+    const now = this.now();
+    const balance = row.gems - price;
+    this.db.prepare('UPDATE users SET gems = ? WHERE id = ?').run(balance, userId);
+    this.db.prepare('INSERT INTO owned (user_id, item, price, at) VALUES (?, ?, ?, ?)').run(userId, item, price, now);
+    this.db
+      .prepare('INSERT INTO gem_ledger (user_id, delta, balance, reason, ref, at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(userId, -price, balance, `buy ${item}`, null, now);
+    return 'ok';
   }
 
   // ---- sessions ---------------------------------------------------------

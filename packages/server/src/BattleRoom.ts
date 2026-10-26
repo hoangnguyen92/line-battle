@@ -3,6 +3,7 @@ import {
   isRegion,
   sanitizeHandling,
   sanitizeLook,
+  usableLook,
   TICK_RATE,
   type EndReason,
   type Handling,
@@ -140,7 +141,7 @@ export class BattleRoom extends Room {
       user,
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
-      look: sanitizeLook(options.look),
+      look: usableLook(sanitizeLook(options.look), user?.owned ?? []),
       connected: true,
       wantsRematch: false,
     });
@@ -282,6 +283,16 @@ export class BattleRoom extends Room {
         replay: { version: 2, kind: 'online', mode: this.mode, names, handling: [a.handling, b.handling], rounds: this.rounds, score, winner, reason },
       });
       this.broadcastAll('saved', { matchId });
+      // Gems for playing, unless the server threw the match out.
+      if (reason !== 'invalid') {
+        for (const p of [0, 1] as const) {
+          const u = this.seats[p].user;
+          if (!u) continue;
+          // The loser earns only when the match was played out, not when they left or stalled.
+          const earned = store.rewardMatch(u.id, winner === p, reason === 'topOut');
+          if (earned > 0) this.sendTo(p, 'gems', { earned, total: store.userById(u.id)!.gems });
+        }
+      }
       if (changes) {
         for (const p of [0, 1] as const) {
           this.sendTo(p, 'rating', changes[p]);

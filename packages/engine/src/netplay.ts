@@ -194,6 +194,8 @@ export interface ServerMessages {
   matchEnd: { winner: 0 | 1 | null; score: [number, number]; reason: EndReason };
   /** After a ranked match, to each player with their own change. */
   rating: RatingChange;
+  /** Gems you earned for the match, and your new balance. */
+  gems: { earned: number; total: number };
   /** The match was saved: its replay can be fetched from /api/matches/:id/replay. */
   saved: { matchId: number };
   /** Who has asked for a rematch so far. */

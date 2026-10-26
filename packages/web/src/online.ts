@@ -104,6 +104,8 @@ export class OnlineMatch {
   canRematch = true;
   /** Your rating change, once a ranked match is over. */
   ratingChange: RatingChange | null = null;
+  /** Gems this match earned you. */
+  gemsEarned = 0;
   /** Set once the server has saved the match. */
   matchId: number | null = null;
   /** The latest word from the queue while searching. */
@@ -244,6 +246,7 @@ export class OnlineMatch {
       this.canRematch = m.canRematch;
     });
     on('rating', (r) => (this.ratingChange = r));
+    on('gems', (g) => (this.gemsEarned = g.earned));
     on('saved', ({ matchId }) => (this.matchId = matchId));
     on('round', (r) => this.startRound(r.round, r.seed, r.countdownMs));
     on('garbage', (g) => this.local?.receive(g));
@@ -278,7 +281,10 @@ export class OnlineMatch {
     this.lastWinner = null;
     this.endReason = null;
     this.rematch = [false, false];
-    if (round === 1) this.matchId = null;
+    if (round === 1) {
+      this.matchId = null;
+      this.gemsEarned = 0;
+    }
     this.setPhase('countdown');
   }
 
