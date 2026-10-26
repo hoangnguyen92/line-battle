@@ -132,6 +132,9 @@ const VI: Record<string, string> = {
   "Show the opponent's board in the default skin": 'Hiện bảng của đối thủ bằng kiểu khối mặc định',
   'Sound volume': 'Âm lượng hiệu ứng',
   'Music volume': 'Âm lượng nhạc nền',
+  'Sound': 'Âm thanh',
+  'Sound effects volume': 'Âm lượng hiệu ứng',
+  'Drag all the way left to turn it off.': 'Kéo hết sang trái để tắt.',
   'off': 'tắt',
   'Looks never change how the game plays. Your opponent sees your character and skin online.':
     'Giao diện không ảnh hưởng đến cách chơi. Khi chơi online, đối thủ sẽ thấy nhân vật và kiểu khối của bạn.',

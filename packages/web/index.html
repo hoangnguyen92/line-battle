@@ -69,6 +69,7 @@
           <button id="open-customize" class="link">Character and skins</button>
           <button id="open-controls" class="link">Controls</button>
           <button id="open-settings" class="link">Handling</button>
+          <button id="open-sound" class="link">Sound</button>
           <select id="language" aria-label="Language" title="Language"></select>
         </nav>
 
@@ -123,14 +124,20 @@
         <h3>Board theme</h3>
         <div id="theme-pick" class="segmented"></div>
         <label class="check"><input id="plain-opponent" type="checkbox" /> Show the opponent's board in the default skin</label>
-        <label>Sound volume <output id="volume-out"></output>
-          <input id="volume" type="range" min="0" max="100" step="5" />
-        </label>
+        <p class="hint wide">Looks never change how the game plays. Your opponent sees your character and skin online.</p>
+        <button id="close-customize" class="primary">Done (Esc)</button>
+      </section>
+
+      <section id="sound" class="overlay hidden">
+        <h2>Sound</h2>
         <label>Music volume <output id="music-out"></output>
           <input id="music" type="range" min="0" max="100" step="5" />
         </label>
-        <p class="hint wide">Looks never change how the game plays. Your opponent sees your character and skin online.</p>
-        <button id="close-customize" class="primary">Done (Esc)</button>
+        <label>Sound effects volume <output id="volume-out"></output>
+          <input id="volume" type="range" min="0" max="100" step="5" />
+        </label>
+        <p class="hint">Drag all the way left to turn it off.</p>
+        <button id="close-sound" class="primary">Done (Esc)</button>
       </section>
 
       <section id="controls" class="overlay hidden">

@@ -77,7 +77,7 @@ const MAX_CATCH_UP = 8;
 /** 'bot' is a match against the bot; the gauntlet is a run of bot matches, levels 1 to 5. */
 type Mode = 'sprint' | 'versus' | 'bot' | 'online' | 'tutorial';
 /** 'lobby' covers connecting, waiting for an opponent and connection errors. */
-type Screen = 'menu' | 'settings' | 'customize' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
+type Screen = 'menu' | 'settings' | 'customize' | 'sound' | 'controls' | 'account' | 'profile' | 'lobby' | 'countdown' | 'playing' | 'roundEnd' | 'result';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -145,6 +145,7 @@ function show(next: Screen): void {
   $('menu').classList.toggle('hidden', next !== 'menu');
   $('settings').classList.toggle('hidden', next !== 'settings');
   $('customize').classList.toggle('hidden', next !== 'customize');
+  $('sound').classList.toggle('hidden', next !== 'sound');
   $('controls').classList.toggle('hidden', next !== 'controls');
   $('tutorial-tip').classList.toggle('hidden', mode !== 'tutorial' || !inGameScreen(next));
   $('result').classList.toggle('hidden', next !== 'result');
@@ -778,6 +779,7 @@ addEventListener('keydown', (e) => {
     e.preventDefault();
     if (screen === 'settings') return closeSettings();
     if (screen === 'customize') return closeCustomize();
+    if (screen === 'sound') return closeSound();
     if (screen === 'controls') return closeControls();
     if (mode === 'tutorial' && tutorial && !tutorial.finished) finishTutorial();
     if (screen === 'account' || screen === 'profile') return show('menu');
@@ -1182,14 +1184,25 @@ function buildCustomize(): void {
   }
 
   $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
+}
+
+function openSound(): void {
   $<HTMLInputElement>('volume').value = String(prefs.volume);
   $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
   $<HTMLInputElement>('music').value = String(prefs.music);
   $('music-out').textContent = prefs.music === 0 ? t('off') : `${prefs.music}%`;
+  show('sound');
+}
+
+function closeSound(): void {
+  storePrefs();
+  show('menu');
 }
 
 $('open-customize').addEventListener('click', openCustomize);
 $('close-customize').addEventListener('click', closeCustomize);
+$('open-sound').addEventListener('click', openSound);
+$('close-sound').addEventListener('click', closeSound);
 $<HTMLInputElement>('plain-opponent').addEventListener('change', (e) => {
   prefs = { ...prefs, plainOpponent: (e.target as HTMLInputElement).checked };
   applyLooks();
