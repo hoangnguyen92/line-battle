@@ -36,6 +36,11 @@ export class Sound {
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
+  /** The audio context once a key press or click has started it; the music plays through it too. */
+  get context(): AudioContext | null {
+    return this.ctx;
+  }
+
   private get ready(): AudioContext | null {
     return this.ctx && this.ctx.state === 'running' && this.volume > 0 ? this.ctx : null;
   }

@@ -43,6 +43,7 @@ import { ACTION_NAMES, bindingsFrom, Keyboard, keyLabel, keysText, P1_BINDINGS, 
 import { describeEnd, OnlineMatch, type JoinKind, type OnlinePhase } from './online';
 import { formatTime, Renderer, type Popup } from './render';
 import { drawCell, skinSheet, THEME_COLORS } from './skins';
+import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
@@ -88,6 +89,8 @@ let prefs = loadPrefs();
 const soloKeys = new Keyboard(bindingsFrom(prefs.keys));
 const sound = new Sound();
 sound.setVolume(prefs.volume);
+const music = new Music();
+music.setVolume(prefs.music);
 preloadArt();
 const versusKeys = [new Keyboard(P1_BINDINGS), new Keyboard(P2_BINDINGS)] as const;
 const allKeyboards = [soloKeys, ...versusKeys];
@@ -698,6 +701,8 @@ function describeClear(info: ClearInfo): string[] {
 function frame(now: number): void {
   const elapsed = now - lastFrame;
   lastFrame = now;
+  // The upbeat track during play, the calm one everywhere else.
+  music.play(sound.context, prefs.music === 0 ? null : inGame() ? 'match' : 'menu');
   if (mode === 'online' && online) {
     const m = online;
     m.update(now, () => {
@@ -1081,6 +1086,7 @@ function setPrefs(next: typeof prefs, store = true): void {
   prefs = next;
   soloKeys.setBindings(bindingsFrom(prefs.keys));
   sound.setVolume(prefs.volume);
+  music.setVolume(prefs.music);
   applyLooks();
   refreshControlsTable();
   if (store) storePrefs();
@@ -1178,6 +1184,8 @@ function buildCustomize(): void {
   $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
   $<HTMLInputElement>('volume').value = String(prefs.volume);
   $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
+  $<HTMLInputElement>('music').value = String(prefs.music);
+  $('music-out').textContent = prefs.music === 0 ? t('off') : `${prefs.music}%`;
 }
 
 $('open-customize').addEventListener('click', openCustomize);
@@ -1190,6 +1198,11 @@ $<HTMLInputElement>('volume').addEventListener('input', (e) => {
   prefs = { ...prefs, volume: Number((e.target as HTMLInputElement).value) };
   sound.setVolume(prefs.volume);
   $('volume-out').textContent = prefs.volume === 0 ? t('off') : `${prefs.volume}%`;
+});
+$<HTMLInputElement>('music').addEventListener('input', (e) => {
+  prefs = { ...prefs, music: Number((e.target as HTMLInputElement).value) };
+  music.setVolume(prefs.music);
+  $('music-out').textContent = prefs.music === 0 ? t('off') : `${prefs.music}%`;
 });
 // A sample of the sound at the new volume.
 $<HTMLInputElement>('volume').addEventListener('change', () => sound.impact('apple', false, 0));
