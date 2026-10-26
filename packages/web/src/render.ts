@@ -243,8 +243,8 @@ export class Renderer {
     const minutes = game.tick / TICK_RATE / 60;
     const rows: [string, string][] = [
       ['SENT', String(game.attackSent)],
-      ['APM', minutes > 0 ? (game.attackSent / minutes).toFixed(1) : '0.0'],
-      ['PPS', minutes > 0 ? (game.piecesPlaced / (minutes * 60)).toFixed(2) : '0.00'],
+      ['APM · ATTACK/MIN', minutes > 0 ? (game.attackSent / minutes).toFixed(1) : '0.0'],
+      ['PPS · PIECES/SEC', minutes > 0 ? (game.piecesPlaced / (minutes * 60)).toFixed(2) : '0.00'],
     ];
     for (const [name, value] of rows) {
       this.label(name, right, y, 'right');

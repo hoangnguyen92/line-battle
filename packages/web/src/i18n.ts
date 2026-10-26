@@ -302,6 +302,8 @@ const VI: Record<string, string> = {
   'LINES': 'HÀNG',
   'PIECES': 'KHỐI',
   'SENT': 'ĐÃ GỬI',
+  'APM · ATTACK/MIN': 'APM · TẤN CÔNG/PHÚT',
+  'PPS · PIECES/SEC': 'PPS · KHỐI/GIÂY',
   'PLAYER 1': 'NGƯỜI CHƠI 1',
   'PLAYER 2': 'NGƯỜI CHƠI 2',
   'YOU': 'BẠN',
