@@ -68,6 +68,7 @@ const VI: Record<string, string> = {
   'Your region': 'Khu vực của bạn',
   'Matchmaking pairs players in the same region first.': 'Ghép trận ưu tiên người chơi cùng khu vực.',
   'Character and skins': 'Nhân vật và giao diện',
+  'Follow Line Battle': 'Theo dõi Line Battle',
   'Controls': 'Phím điều khiển',
   'Handling': 'Độ nhạy phím',
   'Keys and rules': 'Phím và luật chơi',

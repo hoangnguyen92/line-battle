@@ -202,6 +202,9 @@ label.check { flex-direction: row; align-items: center; gap: 8px; width: auto; }
 .menu-foot { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
 .menu-foot button.link { font-size: 14px; text-decoration: none; }
 .menu-foot button.link:hover { color: var(--text); }
+.menu-social { display: flex; gap: 14px; justify-content: center; align-items: baseline; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.menu-social a { color: var(--muted); }
+.menu-social a:hover { color: var(--text); }
 #language { font: inherit; font-size: 14px; color: var(--muted); background: transparent; border: 1px solid #343852; border-radius: 8px; padding: 3px 6px; cursor: pointer; }
 #language option { background: var(--panel); color: var(--text); }
 .reference { width: 100%; border-top: 1px solid #262a3d; padding-top: 12px; }
