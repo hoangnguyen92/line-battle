@@ -143,7 +143,7 @@ class Player {
   }
 }
 
-const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING, look: { character: name === 'Host' ? 'mochi' : 'bao', skin: 'neon' } });
+const opts = (mode: JoinOptions['mode'], name: string): JoinOptions => ({ mode, name, handling: DEFAULT_HANDLING, look: { character: name === 'Host' ? 'mochi' : 'bao', skin: name === 'Host' ? 'flat' : 'neon' } });
 
 describe('battle room', () => {
   it('runs a private room match to the end, first to 2', async () => {
@@ -158,7 +158,8 @@ describe('battle room', () => {
     const [match] = await guest.waitFor('match');
     expect(match.you).toBe(1);
     expect(match.names).toEqual(['Host', 'Guest b']);
-    expect(match.looks).toEqual([{ character: 'mochi', skin: 'neon' }, { character: 'bao', skin: 'neon' }]);
+    // The guest hasn't bought neon, so the opponent sees the default skin.
+    expect(match.looks).toEqual([{ character: 'mochi', skin: 'flat' }, { character: 'bao', skin: 'gem' }]);
 
     const [end] = await host.waitFor('matchEnd');
     expect(end).toEqual({ winner: 1, score: [0, 2], reason: 'topOut' });

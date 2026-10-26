@@ -275,6 +275,11 @@ API (JSON; send `Authorization: Bearer <token>` where signed in):
 Not built yet: ping display, margin time, and filling an empty quick match
 queue with a bot.
 
+## The shop
+
+Cosmetics bought with gems; card payments through Stripe. Setup, prices and
+the `npm run gems` admin command are in [docs/payments.md](docs/payments.md).
+
 ## Player stats
 
 `npm run stats` prints accounts, new sign-ups, active players and matches

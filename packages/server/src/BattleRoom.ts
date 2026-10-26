@@ -3,6 +3,7 @@ import {
   isRegion,
   sanitizeHandling,
   sanitizeLook,
+  usableLook,
   TICK_RATE,
   type EndReason,
   type Handling,
@@ -140,7 +141,7 @@ export class BattleRoom extends Room {
       user,
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
-      look: sanitizeLook(options.look),
+      look: usableLook(sanitizeLook(options.look), user?.owned ?? []),
       connected: true,
       wantsRematch: false,
     });

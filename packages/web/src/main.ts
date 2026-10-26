@@ -33,6 +33,16 @@ import {
   REGIONS,
   type Replay,
   type SkinId,
+  canUse,
+  forSale,
+  GEM_PACKS,
+  shopItem,
+  usableLook,
+  usableTheme,
+  type GemPack,
+  type ItemKind,
+  type ShopInfo,
+  type ShopItem,
 } from '@line-battle/engine';
 import { Account, ApiError } from './account';
 import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@line-battle/bot';
@@ -179,14 +189,20 @@ function setMode(next: Mode): void {
   applyLooks();
 }
 
-/** A skin you can use: earned skins need to be earned first. */
-function skinAllowed(skin: SkinId): boolean {
-  return skin !== 'gold' || loadGauntletBest() >= 5;
+/** Items bought on your account; guests have none. */
+function owned(): readonly string[] {
+  return account.me?.owned ?? [];
 }
 
-/** Your look, with any skin you haven't earned (e.g. set on another device) swapped for the default. */
+/** A skin you can use: earned skins need to be earned first, and shop skins bought. */
+function skinAllowed(skin: SkinId): boolean {
+  return skin === 'gold' ? loadGauntletBest() >= 5 : canUse('skin', skin, owned());
+}
+
+/** Your look, with anything you haven't earned or bought (e.g. after logging out) swapped for the default. */
 function myLook(): Look {
-  return { character: prefs.look.character, skin: skinAllowed(prefs.look.skin) ? prefs.look.skin : 'gem' };
+  const look = usableLook(prefs.look, owned());
+  return { ...look, skin: skinAllowed(look.skin) ? look.skin : 'gem' };
 }
 
 /** A character for the other side that isn't yours. */
@@ -204,7 +220,7 @@ function applyLooks(): void {
   characters[0].character = mine.character;
   characters[1].character = theirs.character;
   renderer.setSkins([skinSheet(mine.skin), skinSheet(prefs.plainOpponent ? 'gem' : theirs.skin)]);
-  const theme = THEME_COLORS[prefs.theme];
+  const theme = THEME_COLORS[usableTheme(prefs.theme, owned())];
   renderer.setTheme(theme);
   document.body.style.backgroundColor = theme.page;
 }
@@ -968,6 +984,11 @@ function refreshAccountBar(): void {
 }
 
 account.onChange(refreshAccountBar);
+// Logging in or out changes what you own.
+account.onChange(() => {
+  applyLooks();
+  if (screen === 'customize') buildCustomize();
+});
 
 /** After signing in, the account's settings win over this browser's. */
 function adoptAccountSettings(): void {
@@ -1122,8 +1143,18 @@ function refreshControlsTable(): void {
 }
 
 function openCustomize(): void {
+  confirming = null;
+  shopNote = '';
   buildCustomize();
   show('customize');
+  // Whether gems can be bought right now; the catalog itself is built in.
+  void account
+    .shop()
+    .then((info) => {
+      shopInfo = info;
+      if (screen === 'customize') buildCustomize();
+    })
+    .catch(() => {});
 }
 
 function closeCustomize(): void {
@@ -1143,23 +1174,135 @@ function pickButton(parent: HTMLElement, selected: boolean, onPick: () => void):
   return b;
 }
 
+// ---- the shop: paid items sit in the same picker, with their price -------------
+
+let shopInfo: ShopInfo | null = null;
+/** The item waiting for a second click to confirm the purchase. */
+let confirming: ShopItem['id'] | null = null;
+let shopNote = '';
+let shopBusy = false;
+
+/** The shop entry for a pick button, when the item still has to be bought. */
+function lockedItem(kind: ItemKind, key: string): ShopItem | null {
+  const item = shopItem(`${kind}:${key}`);
+  return item && forSale(item) && !owned().includes(item.id) ? item : null;
+}
+
+/** A pick button for something you own, or a buy button for something you don't. */
+function shopButton(parent: HTMLElement, kind: ItemKind, key: string, selected: boolean, onPick: () => void): HTMLButtonElement {
+  const item = lockedItem(kind, key);
+  if (!item) return pickButton(parent, selected, onPick);
+  const b = document.createElement('button');
+  b.classList.add('for-sale');
+  b.classList.toggle('confirming', confirming === item.id);
+  b.disabled = shopBusy;
+  b.addEventListener('click', () => void buyItem(item, onPick));
+  parent.append(b);
+  return b;
+}
+
+function priceTag(item: ShopItem): HTMLSpanElement {
+  const tag = document.createElement('span');
+  tag.className = 'price';
+  tag.textContent = confirming === item.id ? t('Buy for {price} gems?', { price: item.price }) : `💎 ${item.price}`;
+  return tag;
+}
+
+async function buyItem(item: ShopItem, onPick: () => void): Promise<void> {
+  shopNote = '';
+  if (!account.me) {
+    shopNote = t('Log in to buy items. They stay on your account on every device.');
+  } else if (account.me.gems < item.price) {
+    confirming = null;
+    shopNote = t('You need {n} more gems.', { n: item.price - account.me.gems });
+  } else if (confirming !== item.id) {
+    // First click shows the price question, the second one buys.
+    confirming = item.id;
+  } else {
+    confirming = null;
+    shopBusy = true;
+    buildCustomize();
+    try {
+      await account.buy(item.id);
+      onPick();
+      applyLooks();
+      storePrefs();
+      shopNote = t('Bought! It is yours on every device.');
+    } catch (e) {
+      shopNote = e instanceof ApiError ? t(e.message) : t("Couldn't buy it. Try again.");
+    }
+    shopBusy = false;
+  }
+  buildCustomize();
+}
+
+function packLabel(pack: GemPack): string {
+  const price = language === 'vi' ? `${pack.vnd.toLocaleString('vi-VN')}đ` : `$${pack.usd.toFixed(2)}`;
+  return `💎 ${pack.gems} · ${price}`;
+}
+
+async function buyGems(pack: GemPack): Promise<void> {
+  shopBusy = true;
+  shopNote = t('Opening the payment page...');
+  buildCustomize();
+  try {
+    // Players reading Vietnamese pay in dong, everyone else in dollars.
+    location.href = await account.checkout(pack.id, language === 'vi' ? 'vnd' : 'usd');
+    return;
+  } catch (e) {
+    shopNote = e instanceof ApiError ? t(e.message) : t("Couldn't start the payment. Try again in a minute.");
+  }
+  shopBusy = false;
+  buildCustomize();
+}
+
+function buildGemBar(): void {
+  const bar = $('gem-bar');
+  bar.innerHTML = '';
+  const me = account.me;
+  const balance = document.createElement('strong');
+  balance.textContent = me ? t('💎 {n} gems', { n: me.gems }) : t('Log in to buy gems and items.');
+  bar.append(balance);
+  const open = (shopInfo?.payments.length ?? 0) > 0;
+  if (me && open) {
+    for (const pack of GEM_PACKS) {
+      const b = document.createElement('button');
+      b.textContent = packLabel(pack);
+      b.disabled = shopBusy;
+      b.addEventListener('click', () => void buyGems(pack));
+      bar.append(b);
+    }
+  } else if (me) {
+    const soon = document.createElement('span');
+    soon.className = 'hint';
+    soon.textContent = t('Buying gems opens soon.');
+    bar.append(soon);
+  }
+  $('shop-note').textContent = shopNote;
+}
+
 function buildCustomize(): void {
+  buildGemBar();
   const chars = $('character-pick');
   chars.innerHTML = '';
   for (const id of CHARACTERS) {
-    const b = pickButton(chars, prefs.look.character === id, () => (prefs = { ...prefs, look: { ...prefs.look, character: id } }));
+    const item = lockedItem('character', id);
+    const b = shopButton(chars, 'character', id, prefs.look.character === id, () => (prefs = { ...prefs, look: { ...prefs.look, character: id } }));
     const img = document.createElement('img');
-    img.src = characterUrl(id, prefs.look.character === id ? 'win' : 'idle');
+    img.src = characterUrl(id, prefs.look.character === id && !item ? 'win' : 'idle');
     img.alt = '';
     b.append(img, t(CHARACTER_NAMES[id]));
+    if (item) b.append(priceTag(item));
   }
 
   const skins = $('skin-pick');
   skins.innerHTML = '';
   for (const id of SKINS) {
     const allowed = skinAllowed(id);
-    const b = pickButton(skins, prefs.look.skin === id && allowed, () => (prefs = { ...prefs, look: { ...prefs.look, skin: id } }));
-    b.disabled = !allowed;
+    const item = lockedItem('skin', id);
+    const b = shopButton(skins, 'skin', id, prefs.look.skin === id && allowed, () => (prefs = { ...prefs, look: { ...prefs.look, skin: id } }));
+    const earned = EARNED_SKINS[id];
+    if (earned) b.disabled = !allowed;
     // A row of all 7 pieces' blocks plus garbage, so you can check they stay easy to tell apart.
     const preview = document.createElement('canvas');
     preview.width = 224;
@@ -1167,7 +1310,7 @@ function buildCustomize(): void {
     const c = preview.getContext('2d')!;
     for (let i = 1; i <= 7; i++) drawCell(c, skinSheet(id), i, (i - 1) * 32, 0, 32);
     b.append(preview, t(SKIN_NAMES[id]));
-    const earned = EARNED_SKINS[id];
+    if (item) b.append(priceTag(item));
     if (earned) {
       const note = document.createElement('span');
       note.className = 'lock';
@@ -1179,8 +1322,9 @@ function buildCustomize(): void {
   const themes = $('theme-pick');
   themes.innerHTML = '';
   for (const id of THEMES) {
-    const b = pickButton(themes, prefs.theme === id, () => (prefs = { ...prefs, theme: id }));
-    b.textContent = t(THEME_NAMES[id]);
+    const item = lockedItem('theme', id);
+    const b = shopButton(themes, 'theme', id, usableTheme(prefs.theme, owned()) === id, () => (prefs = { ...prefs, theme: id }));
+    b.textContent = item ? `${t(THEME_NAMES[id])} · ${priceTag(item).textContent}` : t(THEME_NAMES[id]);
   }
 
   $<HTMLInputElement>('plain-opponent').checked = prefs.plainOpponent;
@@ -1294,7 +1438,40 @@ $('reset-keys').addEventListener('click', () => {
   buildKeymap();
 });
 
-void account.restore().then(adoptAccountSettings);
+void account.restore().then(adoptAccountSettings).then(afterPayment);
+
+/**
+ * Back from the payment page. The gems come from the payment provider's own
+ * message to the server, which can take a few seconds, so check a few times.
+ */
+function afterPayment(): void {
+  const paid = new URLSearchParams(location.search).get('paid');
+  if (paid === null) return;
+  history.replaceState(null, '', location.pathname);
+  openCustomize();
+  if (paid !== '1') {
+    shopNote = t('Payment cancelled. Nothing was charged.');
+    buildCustomize();
+    return;
+  }
+  const before = account.me?.gems ?? 0;
+  shopNote = t('Thanks! Your gems will appear in a few seconds.');
+  buildCustomize();
+  let tries = 0;
+  const check = (): void => {
+    void account.refresh().then(() => {
+      if ((account.me?.gems ?? 0) > before) {
+        shopNote = t('Gems added. Enjoy!');
+        buildCustomize();
+      } else if (++tries < 10) setTimeout(check, 2000);
+      else {
+        shopNote = t('Your payment went through, but the gems are slow to arrive. Reload in a minute; if they still are missing, contact us.');
+        buildCustomize();
+      }
+    });
+  };
+  check();
+}
 refreshAccountBar();
 
 show('menu');

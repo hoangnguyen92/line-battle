@@ -6,6 +6,7 @@ import { BattleRoom } from './BattleRoom';
 import { QueueRoom } from './QueueRoom';
 import { setStore } from './services';
 import { Store } from './store';
+import { StripePayments, stripeConfigFromEnv } from './stripe';
 
 // Settings come from environment variables, so the same image runs anywhere.
 const port = Number(process.env.PORT ?? 2567);
@@ -16,6 +17,11 @@ const dbPath = process.env.DB_PATH ?? 'data/line-battle.db';
 const store = new Store(dbPath);
 setStore(store);
 
+/** Card payments are on once STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and SITE_URL are set. */
+const stripe = stripeConfigFromEnv(process.env);
+const payments = stripe ? [new StripePayments(stripe, store)] : [];
+console.log(stripe ? `Card payments on (Stripe ${stripe.secretKey.startsWith('sk_live') ? 'live' : 'test'} mode)` : 'Card payments off');
+
 const server = defineServer({
   rooms: {
     [BATTLE_ROOM]: defineRoom(BattleRoom),
@@ -24,7 +30,7 @@ const server = defineServer({
   routes: createRouter({
     // For Docker and load balancer health checks.
     health: createEndpoint('/health', { method: 'GET' }, async () => 'ok'),
-    api: apiEndpoint(new Api(store)),
+    api: apiEndpoint(new Api(store, Date.now, payments)),
   }),
   transport: new WebSocketTransport(),
   greet: false,

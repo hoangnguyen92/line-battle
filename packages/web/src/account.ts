@@ -1,4 +1,17 @@
-import type { Handling, LeaderboardEntry, MatchSummary, Me, OnlineReplay, Prefs, Profile, Region, SessionResponse } from '@line-battle/engine';
+import type {
+  CheckoutResponse,
+  Handling,
+  ItemId,
+  LeaderboardEntry,
+  MatchSummary,
+  Me,
+  OnlineReplay,
+  Prefs,
+  Profile,
+  Region,
+  SessionResponse,
+  ShopInfo,
+} from '@line-battle/engine';
 
 const TOKEN_KEY = 'lineBattle.session';
 const configuredServer: string = import.meta.env.VITE_SERVER_URL || '';
@@ -102,6 +115,20 @@ export class Account {
 
   replay(matchId: number): Promise<OnlineReplay> {
     return this.call<OnlineReplay>('GET', `/api/matches/${matchId}/replay`);
+  }
+
+  shop(): Promise<ShopInfo> {
+    return this.call<ShopInfo>('GET', '/api/shop');
+  }
+
+  /** Buys an item with gems; `me` then has it, and fewer gems. */
+  async buy(item: ItemId): Promise<void> {
+    this.setMe(await this.call<Me>('POST', '/api/shop/buy', { item }));
+  }
+
+  /** The payment page for a gem pack. */
+  async checkout(pack: string, currency: 'vnd' | 'usd'): Promise<string> {
+    return (await this.call<CheckoutResponse>('POST', '/api/shop/checkout', { pack, currency })).url;
   }
 
   private startSession(res: SessionResponse): Me {

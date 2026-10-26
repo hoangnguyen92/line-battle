@@ -1,5 +1,6 @@
 import type { Look, Prefs } from './cosmetics';
 import type { Handling } from './game';
+import type { ItemId } from './shop';
 import { StreamPlayer, type MatchMode, type RelayBatch } from './netplay';
 
 // ---- accounts, matchmaking and online replays ------------------------------
@@ -56,6 +57,10 @@ export interface Me {
   rating: PublicRating;
   games: number;
   wins: number;
+  /** Gems to spend in the shop. */
+  gems: number;
+  /** Items bought in the shop. */
+  owned: ItemId[];
 }
 
 export interface MatchSummary {

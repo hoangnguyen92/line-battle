@@ -9,4 +9,5 @@ export * from './netplay';
 export * from './pieces';
 export * from './replay';
 export * from './rng';
+export * from './shop';
 export * from './srs';

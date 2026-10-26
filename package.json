@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p packages/engine && tsc -p packages/bot && tsc -p packages/server && tsc -p packages/web",
     "server": "npm run dev -w @line-battle/server",
-    "stats": "ssh linebattle \"docker exec -i line-battle-server-1 node --no-warnings -\" < packages/server/scripts/stats.cjs"
+    "stats": "ssh linebattle \"docker exec -i line-battle-server-1 node --no-warnings -\" < packages/server/scripts/stats.cjs",
+    "gems": "ssh linebattle \"docker exec -i line-battle-server-1 node --no-warnings -\" < packages/server/scripts/gems.cjs"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
