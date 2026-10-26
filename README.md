@@ -274,3 +274,26 @@ API (JSON; send `Authorization: Bearer <token>` where signed in):
 
 Not built yet: ping display, margin time, and filling an empty quick match
 queue with a bot.
+
+## Player stats
+
+`npm run stats` prints accounts, new sign-ups, active players and matches
+played on the live server. It pipes `packages/server/scripts/stats.cjs` over
+SSH into the server container and opens the database read-only, so it needs
+no deploy. It connects to the SSH host `linebattle`, which you define in your
+own `~/.ssh/config` so the server address stays out of the repo:
+
+```
+Host linebattle
+  HostName <server address>
+  User root
+```
+
+On the server itself:
+
+```sh
+docker exec -i line-battle-server-1 node --no-warnings - < stats.cjs
+```
+
+Active players are signed-in accounts whose session was used in that window.
+Guests have no accounts, so they only show up in the match counts.
