@@ -274,3 +274,40 @@ API (JSON; send `Authorization: Bearer <token>` where signed in):
 
 Not built yet: ping display, margin time, and filling an empty quick match
 queue with a bot.
+
+## Player stats
+
+`npm run stats` prints accounts, new sign-ups, active players and matches
+played on the live server. It pipes `packages/server/scripts/stats.cjs` over
+SSH into the server container and opens the database read-only, so it needs
+no deploy. It connects to the SSH host `linebattle`, which you define in your
+own `~/.ssh/config` so the server address stays out of the repo:
+
+```
+Host linebattle
+  HostName <server address>
+  User root
+```
+
+On the server itself:
+
+```sh
+docker exec -i line-battle-server-1 node --no-warnings - < stats.cjs
+```
+
+Active players are signed-in accounts whose session was used in that window.
+Guests have no accounts, so they only show up in the match counts.
+
+## Deploying
+
+Every push to `master` runs the tests in GitHub Actions and, if they pass,
+ships that commit to the live server (`.github/workflows/deploy.yml`). On the
+server, `/usr/local/bin/line-battle-deploy` backs up the database, swaps in
+the new release (the previous one stays in `~/line-battle.prev`), rebuilds
+with Docker Compose, and rolls back if the game server isn't healthy within
+90 seconds. You can also start a deploy by hand from the Actions tab.
+
+It needs three repository secrets: `DEPLOY_HOST` (the server address),
+`DEPLOY_SSH_KEY` (a private key whose public half sits in the server's
+`authorized_keys` as `restrict,command="/usr/local/bin/line-battle-deploy" ...`,
+so it can only deploy), and `DEPLOY_KNOWN_HOSTS` (from `ssh-keyscan`).
