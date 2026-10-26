@@ -143,12 +143,16 @@ const VI: Record<string, string> = {
   'Earned': 'Đã đạt',
   // ---- shop
   'Character, skins and shop': 'Nhân vật, giao diện và cửa hàng',
-  'Items marked 💎 are bought with gems and stay on your account. Click one twice to buy it.':
-    'Món có 💎 được mua bằng Kim cương và lưu vào tài khoản của bạn. Bấm hai lần để mua.',
-  'Buy for {price} gems?': 'Mua với {price} Kim cương?',
-  'Log in to buy items. They stay on your account on every device.': 'Đăng nhập để mua đồ. Đồ đã mua dùng được trên mọi thiết bị.',
-  'You need {n} more gems.': 'Bạn cần thêm {n} Kim cương.',
-  'Bought! It is yours on every device.': 'Đã mua! Món này dùng được trên mọi thiết bị.',
+  'Items marked 💎 are unlocked with gems and stay on your account. Click one twice to unlock it.':
+    'Món có 💎 được mở khóa bằng Kim cương và lưu vào tài khoản của bạn. Bấm hai lần để mở khóa.',
+  'Unlock for {price} gems?': 'Mở khóa với {price} Kim cương?',
+  'Log in to unlock items. They stay on your account on every device.': 'Đăng nhập để mở khóa đồ. Đồ đã mở dùng được trên mọi thiết bị.',
+  'You need {n} more gems. Win online matches to earn them.': 'Bạn cần thêm {n} Kim cương. Thắng trận online để kiếm thêm nhé.',
+  'Log in to earn gems and unlock items.': 'Đăng nhập để kiếm Kim cương và mở khóa đồ.',
+  'Earn gems online: {win} per win, {loss} per finished loss, {first} extra for the first win of the day (up to {cap} a day).':
+    'Kiếm Kim cương khi chơi online: thắng được {win}, thua (chơi hết trận) được {loss}, trận thắng đầu tiên trong ngày thêm {first} (tối đa {cap} mỗi ngày).',
+  '+{n} gems': '+{n} Kim cương',
+  'Unlocked! It is yours on every device.': 'Đã mở khóa! Món này dùng được trên mọi thiết bị.',
   "Couldn't buy it. Try again.": 'Chưa mua được. Thử lại nhé.',
   'Not enough gems.': 'Không đủ Kim cương.',
   "That item isn't for sale.": 'Món này không bán.',
@@ -158,8 +162,6 @@ const VI: Record<string, string> = {
   "Buying gems isn't open yet.": 'Chưa mở bán Kim cương.',
   'No such gem pack.': 'Không có gói Kim cương này.',
   '💎 {n} gems': '💎 {n} Kim cương',
-  'Log in to buy gems and items.': 'Đăng nhập để mua Kim cương và đồ.',
-  'Buying gems opens soon.': 'Sắp mở bán Kim cương.',
   'Payment cancelled. Nothing was charged.': 'Đã hủy thanh toán. Bạn không bị trừ tiền.',
   'Thanks! Your gems will appear in a few seconds.': 'Cảm ơn bạn! Kim cương sẽ có trong vài giây.',
   'Gems added. Enjoy!': 'Đã cộng Kim cương. Chúc vui!',

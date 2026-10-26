@@ -18,9 +18,18 @@ import {
   type ItemId,
   shopItem,
   forSale,
+  MATCH_GEMS,
 } from '@line-battle/engine';
 import { DEFAULT_RATING, idleRd, PERIOD_MS, rateMatch, type Rating } from './glicko';
 import { tokenHash } from './passwords';
+
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Midnight in Vietnam (UTC+7, no daylight saving) at the start of the day `t` falls in. */
+export function vnDayStart(t: number): number {
+  return Math.floor((t + VN_OFFSET_MS) / DAY_MS) * DAY_MS - VN_OFFSET_MS;
+}
 
 /** A rating counts for the leaderboard once its deviation is this low. */
 export const SETTLED_RD = 110;
@@ -304,6 +313,23 @@ export class Store {
       this.db.exec('ROLLBACK');
       throw e;
     }
+  }
+
+  /**
+   * Gems for playing a match: a win, a finished loss and the day's first
+   * win pay, up to the daily cap. Returns how many were added.
+   */
+  rewardMatch(userId: number, won: boolean, finished: boolean): number {
+    if (!won && !finished) return 0;
+    const dayStart = vnDayStart(this.now());
+    const today = this.db
+      .prepare("SELECT coalesce(sum(delta), 0) AS earned, coalesce(sum(reason = 'match win'), 0) AS wins FROM gem_ledger WHERE user_id = ? AND at >= ? AND reason LIKE 'match %'")
+      .get(userId, dayStart) as { earned: number; wins: number };
+    let gems = won ? MATCH_GEMS.win + (today.wins === 0 ? MATCH_GEMS.firstWin : 0) : MATCH_GEMS.loss;
+    gems = Math.min(gems, MATCH_GEMS.dailyCap - today.earned);
+    if (gems <= 0) return 0;
+    this.addGems(userId, gems, won ? 'match win' : 'match loss');
+    return gems;
   }
 
   /** The ledger line for a ref, e.g. to undo a refunded payment. */

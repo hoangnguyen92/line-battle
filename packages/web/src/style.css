@@ -233,3 +233,4 @@ label.check { flex-direction: row; align-items: center; gap: 8px; width: auto; }
 button.for-sale { border-style: dashed; }
 button.for-sale.confirming { border-style: solid; border-color: #ffd27d; box-shadow: 0 0 0 2px #ffd27d; }
 .price { color: #ffd27d; font-size: 12px; font-weight: 600; }
+.result-gems { margin: 0; font-size: 16px; font-weight: 600; color: #ffd27d; }

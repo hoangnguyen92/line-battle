@@ -67,6 +67,17 @@ export const GEM_PACKS: GemPack[] = [
   { id: 'gems-1200', gems: 1200, vnd: 239_000, usd: 9.99 },
 ];
 
+/** Gems for an online match with an account. Earning stops at the daily cap. */
+export const MATCH_GEMS = {
+  win: 15,
+  /** A finished match you lost; leaving early earns nothing. */
+  loss: 5,
+  /** On top, for your first win of the day. */
+  firstWin: 30,
+  /** Most gems from matches in one day (Vietnam time). */
+  dailyCap: 150,
+} as const;
+
 /** What the shop sends a signed-in player: their gems and what they own. */
 export interface Wallet {
   gems: number;

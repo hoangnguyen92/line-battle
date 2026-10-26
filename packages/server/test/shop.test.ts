@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { canUse, SHOP_ITEMS, usableLook, usableTheme, type Me, type SessionResponse } from '@line-battle/engine';
 import { Api, type ApiRequest } from '../src/api';
-import { Store } from '../src/store';
+import { Store, vnDayStart } from '../src/store';
 
 describe('catalog', () => {
   it('earned skins are never for sale and free items need no purchase', () => {
@@ -47,6 +47,40 @@ describe('store: gems and items', () => {
     expect(store.ledgerEntry('pay:1')).toMatchObject({ userId: u.id, delta: 200 });
     store.addGems(u.id, -500, 'refund');
     expect(store.userById(u.id)!.gems).toBe(0);
+  });
+});
+
+describe('gems for playing', () => {
+  // 2027-01-15 10:00 in Vietnam.
+  let now = Date.UTC(2027, 0, 15, 3);
+  let store: Store;
+  beforeEach(() => {
+    now = Date.UTC(2027, 0, 15, 3);
+    store = new Store(':memory:', () => now);
+  });
+  afterEach(() => store.close());
+
+  it('days start at midnight in Vietnam', () => {
+    expect(vnDayStart(now)).toBe(Date.UTC(2027, 0, 14, 17));
+    expect(vnDayStart(Date.UTC(2027, 0, 14, 16, 59))).toBe(Date.UTC(2027, 0, 13, 17));
+  });
+
+  it('pays wins, the first win of the day, and finished losses, up to the daily cap', () => {
+    const u = store.createUser('Grinder', 'h', 'asia')!;
+    expect(store.rewardMatch(u.id, true, true)).toBe(45);
+    expect(store.rewardMatch(u.id, true, false)).toBe(15);
+    expect(store.rewardMatch(u.id, false, true)).toBe(5);
+    expect(store.rewardMatch(u.id, false, false)).toBe(0);
+    let total = 65;
+    for (let i = 0; i < 20; i++) total += store.rewardMatch(u.id, true, true);
+    expect(total).toBe(150);
+    expect(store.userById(u.id)!.gems).toBe(150);
+    // Spending doesn't make room under the cap.
+    store.buy(u.id, 'skin:pixel');
+    expect(store.rewardMatch(u.id, true, true)).toBe(0);
+    // A new day, a new first win.
+    now += 24 * 60 * 60 * 1000;
+    expect(store.rewardMatch(u.id, true, true)).toBe(45);
   });
 });
 

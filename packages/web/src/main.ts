@@ -36,6 +36,7 @@ import {
   canUse,
   forSale,
   GEM_PACKS,
+  MATCH_GEMS,
   shopItem,
   usableLook,
   usableTheme,
@@ -540,8 +541,8 @@ function showOnlineResult(m: OnlineMatch): void {
   if (youWon) sound.win();
   else sound.lose();
   show('result');
-  // The account bar shows the new rating.
-  if (m.mode === 'ranked') void account.refresh();
+  // The account bar shows the new rating, and the shop the new gems.
+  if (account.signedIn) void account.refresh();
 }
 
 /** The result text under the score, kept up to date with rematch requests. */
@@ -551,6 +552,9 @@ function refreshOnlineResult(m: OnlineMatch): void {
   const change = m.ratingChange;
   const rating = $('result-rating');
   rating.classList.toggle('hidden', !change);
+  const gems = $('result-gems');
+  gems.classList.toggle('hidden', m.gemsEarned === 0);
+  gems.textContent = t('+{n} gems', { n: m.gemsEarned });
   if (change) {
     const diff = change.after.rating - change.before.rating;
     const key = `${change.before.rating}>${change.after.rating}`;
@@ -1204,17 +1208,17 @@ function shopButton(parent: HTMLElement, kind: ItemKind, key: string, selected: 
 function priceTag(item: ShopItem): HTMLSpanElement {
   const tag = document.createElement('span');
   tag.className = 'price';
-  tag.textContent = confirming === item.id ? t('Buy for {price} gems?', { price: item.price }) : `💎 ${item.price}`;
+  tag.textContent = confirming === item.id ? t('Unlock for {price} gems?', { price: item.price }) : `💎 ${item.price}`;
   return tag;
 }
 
 async function buyItem(item: ShopItem, onPick: () => void): Promise<void> {
   shopNote = '';
   if (!account.me) {
-    shopNote = t('Log in to buy items. They stay on your account on every device.');
+    shopNote = t('Log in to unlock items. They stay on your account on every device.');
   } else if (account.me.gems < item.price) {
     confirming = null;
-    shopNote = t('You need {n} more gems.', { n: item.price - account.me.gems });
+    shopNote = t('You need {n} more gems. Win online matches to earn them.', { n: item.price - account.me.gems });
   } else if (confirming !== item.id) {
     // First click shows the price question, the second one buys.
     confirming = item.id;
@@ -1227,7 +1231,7 @@ async function buyItem(item: ShopItem, onPick: () => void): Promise<void> {
       onPick();
       applyLooks();
       storePrefs();
-      shopNote = t('Bought! It is yours on every device.');
+      shopNote = t('Unlocked! It is yours on every device.');
     } catch (e) {
       shopNote = e instanceof ApiError ? t(e.message) : t("Couldn't buy it. Try again.");
     }
@@ -1261,7 +1265,7 @@ function buildGemBar(): void {
   bar.innerHTML = '';
   const me = account.me;
   const balance = document.createElement('strong');
-  balance.textContent = me ? t('💎 {n} gems', { n: me.gems }) : t('Log in to buy gems and items.');
+  balance.textContent = me ? t('💎 {n} gems', { n: me.gems }) : t('Log in to earn gems and unlock items.');
   bar.append(balance);
   const open = (shopInfo?.payments.length ?? 0) > 0;
   if (me && open) {
@@ -1272,12 +1276,16 @@ function buildGemBar(): void {
       b.addEventListener('click', () => void buyGems(pack));
       bar.append(b);
     }
-  } else if (me) {
-    const soon = document.createElement('span');
-    soon.className = 'hint';
-    soon.textContent = t('Buying gems opens soon.');
-    bar.append(soon);
   }
+  const earn = document.createElement('span');
+  earn.className = 'hint wide';
+  earn.textContent = t('Earn gems online: {win} per win, {loss} per finished loss, {first} extra for the first win of the day (up to {cap} a day).', {
+    win: MATCH_GEMS.win,
+    loss: MATCH_GEMS.loss,
+    first: MATCH_GEMS.firstWin,
+    cap: MATCH_GEMS.dailyCap,
+  });
+  bar.append(earn);
   $('shop-note').textContent = shopNote;
 }
 

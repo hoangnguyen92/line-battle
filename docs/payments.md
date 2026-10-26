@@ -12,6 +12,15 @@ pay a whole card fee by itself.
   opponent sees it, so a modified browser can't show off unpaid items.
 - Guests can use the free items only.
 
+## Earning gems by playing
+
+Signed-in players earn gems from online matches (`MATCH_GEMS` in
+`packages/engine/src/shop.ts`): 15 for a win, 5 for a loss that was played
+out (leaving or stalling earns nothing), 30 extra for the first win of the
+day, and at most 150 a day. Days start at midnight Vietnam time. A match the
+server threw out for bad inputs earns nothing. While card payments are off,
+this is the only way to get gems, so every paid item is an unlock.
+
 ## Giving gems by hand
 
 For testing or support, from your PC:
