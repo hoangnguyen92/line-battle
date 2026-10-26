@@ -1,12 +1,16 @@
 import { KEYS, type Key, type KeyEvent, type KeyMap } from '@line-battle/engine';
 import { t } from './i18n';
+import { touchCode, touchLabel } from './touch';
 
 export type Bindings = Record<string, Key>;
 
-/** Single-player bindings by KeyboardEvent.code, from the player's key map. */
+/** Single-player bindings by KeyboardEvent.code, from the player's key map, plus the touch buttons. */
 export function bindingsFrom(keys: KeyMap): Bindings {
   const out: Bindings = {};
-  for (const key of KEYS) for (const code of keys[key]) out[code] = key;
+  for (const key of KEYS) {
+    for (const code of keys[key]) out[code] = key;
+    out[touchCode(key)] = key;
+  }
   return out;
 }
 
@@ -49,6 +53,8 @@ const KEY_LABELS: Record<string, string> = {
 /** A key code as players know it: "KeyX" is "X", "ArrowUp" is "↑". */
 export function keyLabel(code: string): string {
   if (KEY_LABELS[code]) return KEY_LABELS[code];
+  const touch = touchLabel(code);
+  if (touch) return touch;
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
   if (/^Numpad/.test(code)) return `Num ${code.slice(6)}`;

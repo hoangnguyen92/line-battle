@@ -32,7 +32,7 @@ beforeAll(async () => {
   store = new Store(':memory:');
   setStore(store);
   server.define(BATTLE_ROOM, BattleRoom, { countdownMs: 50, roundBreakMs: 50 });
-  server.define(QUEUE_ROOM, QueueRoom, { pairEveryMs: 100, anyRegionAfterMs: 1500 });
+  server.define(QUEUE_ROOM, QueueRoom, { pairEveryMs: 100, anyRegionAfterMs: 1500, anyDeviceAfterMs: 1500 });
   await server.listen(0);
   url = `ws://localhost:${(http.address() as AddressInfo).port}`;
 });
@@ -59,10 +59,10 @@ interface Queued {
   matched: Promise<Player>;
 }
 
-async function enqueue(queue: QueueJoinOptions['queue'], name: string, region: Region = 'asia', token?: string): Promise<Queued> {
+async function enqueue(queue: QueueJoinOptions['queue'], name: string, region: Region = 'asia', token?: string, touch = false): Promise<Queued> {
   const client = new Client(url);
   if (token) client.auth.token = token;
-  const room = await client.joinOrCreate(QUEUE_ROOM, { queue, region, name, handling: DEFAULT_HANDLING, look: DEFAULT_LOOK } satisfies QueueJoinOptions);
+  const room = await client.joinOrCreate(QUEUE_ROOM, { queue, region, name, handling: DEFAULT_HANDLING, look: DEFAULT_LOOK, touch } satisfies QueueJoinOptions);
   const status: QueueMessages['searching'][] = [];
   room.onMessage('searching', (m: QueueMessages['searching']) => status.push(m));
   const matched = new Promise<Player>((resolve, reject) => {
@@ -208,6 +208,23 @@ describe('battle room', () => {
     const [rb, rd] = await Promise.all([b.matched, d.matched]);
     expect(rb.room.roomId).toBe(rd.room.roomId);
     await Promise.all([ra, rb, rc, rd].map((r) => r.room.leave()));
+  }, 30_000);
+
+  it('pairs phone players together first and tells each side who is on touch', async () => {
+    const keys = await enqueue('quick', 'Keys');
+    const phone = await enqueue('quick', 'Phone1', 'asia', undefined, true);
+    const phone2 = await enqueue('quick', 'Phone2', 'asia', undefined, true);
+    const [r1, r2] = await Promise.all([phone.matched, phone2.matched]);
+    expect(r1.room.roomId).toBe(r2.room.roomId);
+    const [m] = await r1.waitFor('match');
+    expect(m.touch).toEqual([true, true]);
+    // The keyboard player waits; after the wait a phone player will do.
+    const phone3 = await enqueue('quick', 'Phone3', 'asia', undefined, true);
+    const [rk, r3] = await Promise.all([keys.matched, phone3.matched]);
+    expect(rk.room.roomId).toBe(r3.room.roomId);
+    const [mk] = await rk.waitFor('match');
+    expect([...mk.touch!].sort()).toEqual([false, true]);
+    await Promise.all([r1, r2, rk, r3].map((r) => r.room.leave()));
   }, 30_000);
 
   it('ranked needs an account and keeps far-apart ratings apart at first', async () => {

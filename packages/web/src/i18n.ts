@@ -125,6 +125,13 @@ const VI: Record<string, string> = {
   '{n} frames ({ms} ms)': '{n} khung hình ({ms} ms)',
   '0 (instant)': '0 (tức thì)',
   'instant': 'tức thì',
+  'Touch buttons': 'Nút cảm ứng',
+  'Auto': 'Tự động',
+  'On': 'Bật',
+  'Off': 'Tắt',
+  'Auto shows on-screen buttons on phones and tablets.': 'Tự động hiện nút trên màn hình khi chơi bằng điện thoại hoặc máy tính bảng.',
+  'These settings are for the touch buttons. Your keyboard settings are kept separately.': 'Đây là cài đặt cho nút cảm ứng. Cài đặt bàn phím của bạn được giữ riêng.',
+  'These settings are for the keyboard.': 'Đây là cài đặt cho bàn phím.',
 
   // ---- character and skins
   'Character': 'Nhân vật',

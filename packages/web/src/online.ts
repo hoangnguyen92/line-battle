@@ -59,6 +59,8 @@ export interface JoinAs {
   look: Look;
   region: Region;
   token: string | null;
+  /** Playing with on-screen touch buttons. */
+  touch: boolean;
 }
 
 export function describeEnd(reason: EndReason, youWon: boolean): string {
@@ -83,6 +85,8 @@ export class OnlineMatch {
   names: [string, string] = ['YOU', 'OPPONENT'];
   /** [you, opponent] characters and skins. */
   looks: [Look, Look] = [DEFAULT_LOOK, DEFAULT_LOOK];
+  /** [you, opponent]: who plays with touch buttons. */
+  touch: [boolean, boolean] = [false, false];
   /** [you, opponent] rounds won. */
   score: [number, number] = [0, 0];
   roundsToWin = 2;
@@ -123,7 +127,7 @@ export class OnlineMatch {
     const client = new Client(SERVER_URL);
     if (as.token) client.auth.token = as.token;
     if (how.kind === 'quick' || how.kind === 'ranked') return this.enqueue(client, how.kind, as);
-    const opts: JoinOptions = { mode: 'private', name: as.name, handling: as.handling, look: as.look };
+    const opts: JoinOptions = { mode: 'private', name: as.name, handling: as.handling, look: as.look, touch: as.touch };
     try {
       const room = how.kind === 'create' ? await client.create(BATTLE_ROOM, opts) : await client.joinById(how.code.trim().toUpperCase(), opts);
       if (this.left) return void room.leave(true);
@@ -140,7 +144,7 @@ export class OnlineMatch {
   /** Waits in the matchmaking queue, then joins the match it finds. */
   private async enqueue(client: Client, kind: 'quick' | 'ranked', as: JoinAs): Promise<void> {
     this.queueKind = kind;
-    const opts: QueueJoinOptions = { queue: kind, region: as.region, name: as.name, handling: as.handling, look: as.look };
+    const opts: QueueJoinOptions = { queue: kind, region: as.region, name: as.name, handling: as.handling, look: as.look, touch: as.touch };
     let queue: Room;
     try {
       queue = await client.joinOrCreate(QUEUE_ROOM, opts);
@@ -239,6 +243,7 @@ export class OnlineMatch {
       this.handling = [m.handling[m.you], m.handling[other]];
       // An older server sends no looks.
       if (m.looks) this.looks = [m.looks[m.you], m.looks[other]];
+      if (m.touch) this.touch = [m.touch[m.you], m.touch[other]];
       this.score = [m.score[m.you], m.score[other]];
       this.roundsToWin = m.roundsToWin;
       this.mode = m.mode;

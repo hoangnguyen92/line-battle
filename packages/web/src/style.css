@@ -234,3 +234,56 @@ button.for-sale { border-style: dashed; }
 button.for-sale.confirming { border-style: solid; border-color: #ffd27d; box-shadow: 0 0 0 2px #ffd27d; }
 .price { color: #ffd27d; font-size: 12px; font-weight: 600; }
 .result-gems { margin: 0; font-size: 16px; font-weight: 600; color: #ffd27d; }
+
+/* ---- touch buttons for phones ---- */
+body.touch { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+body.touch canvas { touch-action: none; }
+#app { padding-bottom: 0; }
+.touchpad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.touch-cluster { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: min(46vw, 210px); }
+.touch-btn {
+  display: grid;
+  place-items: center;
+  height: min(10vh, 76px);
+  min-height: 52px;
+  border-radius: 14px;
+  background: rgb(37 40 57 / 0.85);
+  border: 1px solid #3a3e5a;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 700;
+  touch-action: none;
+}
+.touch-btn.hold, .touch-btn.rotate180 { font-size: 15px; letter-spacing: 0.05em; }
+.touch-btn.hardDrop { background: rgb(124 108 240 / 0.85); border-color: var(--accent); font-size: 30px; }
+.touch-btn.pressed { background: var(--accent-hover); border-color: #fff; transform: scale(0.96); }
+/* Landscape: the two clusters sit either side of the board, low where thumbs rest. */
+.touchpad.sides { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.touchpad.sides .touch-cluster { width: min(26vw, 210px); }
+.touchpad.sides .touch-btn { height: min(20vh, 80px); }
+.touch-back {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  background: rgb(37 40 57 / 0.75);
+  z-index: 2;
+}
+.touch-field { display: flex; flex-direction: column; align-items: center; gap: 6px; }

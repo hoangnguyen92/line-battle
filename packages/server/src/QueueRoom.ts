@@ -26,6 +26,8 @@ export const STATUS_EVERY_MS = 3000;
 export const BASE_RANGE: Record<QueueKind, number> = { ranked: 100, quick: 200 };
 /** The gap widens this much for every second of waiting. */
 export const RANGE_PER_SECOND: Record<QueueKind, number> = { ranked: 15, quick: 30 };
+/** Phone players wait this long for another phone player before a keyboard player will do. */
+export const ANY_DEVICE_AFTER_MS = 8_000;
 /** After both players have waited this long, the queue pairs across regions too. */
 export const ANY_REGION_AFTER_MS = 20_000;
 
@@ -33,6 +35,7 @@ export interface QueueRoomOptions {
   /** Tests shorten the timings. */
   pairEveryMs?: number;
   anyRegionAfterMs?: number;
+  anyDeviceAfterMs?: number;
 }
 
 interface Entry {
@@ -42,6 +45,7 @@ interface Entry {
   name: string;
   handling: Handling;
   look: Look;
+  touch: boolean;
   region: Region;
   rating: number;
   since: number;
@@ -58,12 +62,14 @@ export class QueueRoom extends Room {
 
   private entries: Entry[] = [];
   private anyRegionAfterMs = ANY_REGION_AFTER_MS;
+  private anyDeviceAfterMs = ANY_DEVICE_AFTER_MS;
   private pairing = false;
   /** The player cap held back a pair on the last pass (or no slot is free). */
   private full = false;
 
   onCreate(options: QueueRoomOptions = {}): void {
     this.anyRegionAfterMs = options.anyRegionAfterMs ?? ANY_REGION_AFTER_MS;
+    this.anyDeviceAfterMs = options.anyDeviceAfterMs ?? ANY_DEVICE_AFTER_MS;
     this.autoDispose = true;
     this.clock.setInterval(() => void this.pair(), options.pairEveryMs ?? PAIR_EVERY_MS);
     this.clock.setInterval(() => this.entries.forEach((e) => this.sendStatus(e)), STATUS_EVERY_MS);
@@ -93,6 +99,7 @@ export class QueueRoom extends Room {
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
       look: usableLook(sanitizeLook(options.look), user?.owned ?? []),
+      touch: options.touch === true,
       region,
       rating: user ? user.rating.rating : DEFAULT_RATING.rating,
       since: Date.now(),
@@ -115,6 +122,10 @@ export class QueueRoom extends Room {
     return now - e.since >= this.anyRegionAfterMs;
   }
 
+  private anyDevice(e: Entry, now: number): boolean {
+    return now - e.since >= this.anyDeviceAfterMs;
+  }
+
   /** Pairs everyone it can, longest wait first, each with the closest fit. */
   private async pair(): Promise<void> {
     if (this.pairing) return;
@@ -133,10 +144,12 @@ export class QueueRoom extends Room {
           if (e.user && f.user && e.user.id === f.user.id) continue;
           const sameRegion = e.region === f.region;
           if (!sameRegion && !(this.anyRegion(e, now) && this.anyRegion(f, now))) continue;
+          // Touch buttons are slower than keys, so phones meet phones while any are around.
+          if (e.touch !== f.touch && !(this.anyDevice(e, now) && this.anyDevice(f, now))) continue;
           const gap = Math.abs(e.rating - f.rating);
           if (gap > Math.max(this.range(e, now), this.range(f, now))) continue;
           // Same region beats a slightly closer rating far away.
-          const cost = gap + (sameRegion ? 0 : 300);
+          const cost = gap + (sameRegion ? 0 : 300) + (e.touch === f.touch ? 0 : 150);
           if (cost < bestCost) {
             best = f;
             bestCost = cost;
@@ -164,7 +177,7 @@ export class QueueRoom extends Room {
     try {
       room = await matchMaker.createRoom(BATTLE_ROOM, { mode: a.kind, region: a.region, heldSlots: 2 });
       for (const e of pair) {
-        const reservation = await matchMaker.reserveSeatFor(room, { name: e.name, handling: e.handling, look: e.look }, { user: e.user, queued: true });
+        const reservation = await matchMaker.reserveSeatFor(room, { name: e.name, handling: e.handling, look: e.look, touch: e.touch }, { user: e.user, queued: true });
         this.tell(e, 'matched', { reservation });
       }
     } catch (err) {

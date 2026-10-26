@@ -1,5 +1,6 @@
 import type { LevelId } from '@line-battle/bot';
-import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, sanitizePrefs, type Handling, type Prefs, type Region } from '@line-battle/engine';
+import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, sanitizeHandling, sanitizePrefs, type Handling, type Prefs, type Region } from '@line-battle/engine';
+import type { TouchMode } from './touch';
 
 const HANDLING_KEY = 'lineBattle.handling';
 const SPRINT_BEST_KEY = 'lineBattle.sprintBestTicks';
@@ -105,4 +106,38 @@ export function loadPrefs(): Prefs {
 
 export function savePrefs(p: Prefs): void {
   write(PREFS_KEY, JSON.stringify(p));
+}
+
+const TOUCH_MODE_KEY = 'lineBattle.touchMode';
+const TOUCH_HANDLING_KEY = 'lineBattle.touchHandling';
+
+/**
+ * Touch defaults: a longer DAS so a quick tap moves one cell, and soft drop
+ * a bit faster since a thumb holds it for less time.
+ */
+export const TOUCH_HANDLING: Handling = { das: 12, arr: 2, sdf: 10 };
+
+/** 'auto' shows the buttons on phones and tablets only. */
+export function loadTouchMode(): TouchMode {
+  const v = read(TOUCH_MODE_KEY);
+  return v === 'on' || v === 'off' ? v : 'auto';
+}
+
+export function saveTouchMode(mode: TouchMode): void {
+  write(TOUCH_MODE_KEY, mode);
+}
+
+/** Handling for the touch buttons; kept in this browser only, since it belongs to the device. */
+export function loadTouchHandling(): Handling {
+  try {
+    const saved = JSON.parse(read(TOUCH_HANDLING_KEY) ?? 'null');
+    if (saved && typeof saved.das === 'number') return sanitizeHandling(saved);
+  } catch {
+    /* fall through to defaults */
+  }
+  return { ...TOUCH_HANDLING };
+}
+
+export function saveTouchHandling(h: Handling): void {
+  write(TOUCH_HANDLING_KEY, JSON.stringify(h));
 }
