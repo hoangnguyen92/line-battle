@@ -8,7 +8,7 @@ export interface MatchConfig {
   seed: number;
   /** Per-player settings such as handling; the seed always comes from the match. */
   players?: [Partial<GameConfig>, Partial<GameConfig>];
-  /** Both boards get the same garbage holes, as before replay version 2. */
+  /** Both boards get the same garbage holes, lined up per attack, as before replay version 2. */
   sharedGarbage?: boolean;
 }
 
@@ -26,10 +26,13 @@ export class Match {
 
   constructor(readonly config: MatchConfig) {
     const [a, b] = config.players ?? [{}, {}];
-    const holes = (p: PlayerIndex) => garbageSeed(config.seed, config.sharedGarbage ? null : p);
+    const holes = (p: PlayerIndex): Partial<GameConfig> =>
+      config.sharedGarbage
+        ? { garbageSeed: garbageSeed(config.seed, null), garbageHoles: 'perAttack' }
+        : { garbageSeed: garbageSeed(config.seed, p) };
     this.players = [
-      new Game({ ...a, seed: config.seed, garbageSeed: holes(0) }),
-      new Game({ ...b, seed: config.seed, garbageSeed: holes(1) }),
+      new Game({ ...a, seed: config.seed, ...holes(0) }),
+      new Game({ ...b, seed: config.seed, ...holes(1) }),
     ];
   }
 

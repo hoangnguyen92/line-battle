@@ -61,9 +61,9 @@ export class StreamPlayer {
   private keys: [number, number, number][] = [];
   private acks: [number, number][] = [];
 
-  /** `player` is whose board this is (it picks the garbage holes); null for the old shared holes. */
+  /** `player` is whose board this is (it picks the garbage holes); null for the old shared, lined-up holes. */
   constructor(seed: number, handling: Handling, player: PlayerIndex | null) {
-    this.game = new Game({ seed, handling, garbageSeed: garbageSeed(seed, player) });
+    this.game = new Game({ seed, handling, garbageSeed: garbageSeed(seed, player), garbageHoles: player === null ? 'perAttack' : 'perLine' });
   }
 
   /** Queues a batch and steps the game up to its end. */
