@@ -1,6 +1,6 @@
 import type { LevelId } from '@line-battle/bot';
 import { DEFAULT_HANDLING, isRegion, regionFromTimeZone, sanitizeHandling, sanitizePrefs, type Handling, type Prefs, type Region } from '@line-battle/engine';
-import type { TouchMode } from './touch';
+import type { TouchMode, TouchStyle } from './touch';
 
 const HANDLING_KEY = 'lineBattle.handling';
 const SPRINT_BEST_KEY = 'lineBattle.sprintBestTicks';
@@ -140,4 +140,26 @@ export function loadTouchHandling(): Handling {
 
 export function saveTouchHandling(h: Handling): void {
   write(TOUCH_HANDLING_KEY, JSON.stringify(h));
+}
+
+const TOUCH_STYLE_KEY = 'lineBattle.touchStyle';
+const SWIPE_SENSITIVITY_KEY = 'lineBattle.swipeSensitivity';
+
+/** Swipe unless the player picked the buttons. */
+export function loadTouchStyle(): TouchStyle {
+  return read(TOUCH_STYLE_KEY) === 'buttons' ? 'buttons' : 'swipe';
+}
+
+export function saveTouchStyle(style: TouchStyle): void {
+  write(TOUCH_STYLE_KEY, style);
+}
+
+/** Percent: 100 moves the piece one cell for each cell's width of drag; the default 80 is a little calmer. */
+export function loadSwipeSensitivity(): number {
+  const v = Number(read(SWIPE_SENSITIVITY_KEY));
+  return v >= 50 && v <= 200 ? v : 80;
+}
+
+export function saveSwipeSensitivity(percent: number): void {
+  write(SWIPE_SENSITIVITY_KEY, String(percent));
 }

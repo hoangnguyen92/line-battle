@@ -8,6 +8,8 @@ const GARBAGE = 8;
 interface Lesson {
   title: string;
   text(keys: KeyMap): string;
+  /** The same lesson for swipe controls, when the key text doesn't fit. */
+  swipe?: string;
   /** Sets the board up for this lesson, if it needs a particular one. */
   setup?(game: Game): void;
   /** Keys pressed and events seen so far in this lesson; true when it's done. */
@@ -36,21 +38,25 @@ const LESSONS: Lesson[] = [
   {
     title: 'Move',
     text: (k) => t('Move the falling piece left and right with {left} and {right}.', { left: keysText(k.left), right: keysText(k.right) }),
+    swipe: 'Drag your finger left and right anywhere on the screen: the piece follows it.',
     done: (p) => p.has('left') && p.has('right'),
   },
   {
     title: 'Rotate',
     text: (k) => t('Turn it clockwise with {cw}, and the other way with {ccw}.', { cw: keysText(k.rotateCW), ccw: keysText(k.rotateCCW) }),
+    swipe: 'Tap the right side of the screen to turn it clockwise, and the left side to turn it the other way.',
     done: (p) => p.has('rotateCW') && p.has('rotateCCW'),
   },
   {
     title: 'Drop',
     text: (k) => t('Hold {soft} to drop faster, or press {hard} to drop it all the way at once.', { soft: keysText(k.softDrop), hard: keysText(k.hardDrop) }),
+    swipe: 'Drag down slowly to drop faster, or flick down quickly to drop it all the way at once.',
     done: (p, ev) => p.has('hardDrop') && ev.some((e) => e.type === 'lock'),
   },
   {
     title: 'Hold',
     text: (k) => t('Press {hold} to put a piece aside for later. Press it again to swap it back.', { hold: keysText(k.hold) }),
+    swipe: 'Flick up to put a piece aside for later. Flick up again to swap it back.',
     done: (_p, ev) => ev.some((e) => e.type === 'hold'),
   },
   {
@@ -100,11 +106,12 @@ export class Tutorial {
     return t(this.finished ? 'Ready for a match' : LESSONS[this.lesson].title);
   }
 
-  text(keys: KeyMap): string {
+  text(keys: KeyMap, swipe = false): string {
     if (this.finished) {
       return t('In a match, every clear sends garbage to your opponent, and bigger clears, combos and T-spins send more. Your clears cancel garbage coming at you first. Top out and you lose the round.');
     }
-    return LESSONS[this.lesson].text(keys);
+    const lesson = LESSONS[this.lesson];
+    return swipe && lesson.swipe ? t(lesson.swipe) : lesson.text(keys);
   }
 
   /**

@@ -112,16 +112,25 @@
       <section id="settings" class="overlay hidden">
         <h2>Handling</h2>
         <div class="field touch-field">
-          <span class="setting-name">Touch buttons</span>
+          <span class="setting-name">Touch controls</span>
           <div id="touch-mode" class="segmented"></div>
-          <span class="setting-help">Auto shows on-screen buttons on phones and tablets.</span>
+          <span class="setting-help">Auto turns touch controls on for phones and tablets.</span>
         </div>
+        <div id="touch-style-field" class="field touch-field">
+          <span class="setting-name">Style</span>
+          <div id="touch-style" class="segmented"></div>
+          <span id="touch-style-help" class="setting-help"></span>
+        </div>
+        <label id="swipe-field"><span class="setting-name">Swipe sensitivity</span> <output id="swipe-out"></output>
+          <input id="swipe-sens" type="range" min="50" max="200" step="10" />
+          <span class="setting-help">Higher = the piece moves further for the same drag.</span>
+        </label>
         <p id="handling-for" class="hint"></p>
-        <label><span class="setting-name">DAS: Delayed Auto Shift</span> <output id="das-out"></output>
+        <label id="das-field"><span class="setting-name">DAS: Delayed Auto Shift</span> <output id="das-out"></output>
           <input id="das" type="range" min="0" max="20" step="1" />
           <span class="setting-help">How long you hold left or right before the piece starts sliding on its own. Lower = slides sooner.</span>
         </label>
-        <label><span class="setting-name">ARR: Auto Repeat Rate</span> <output id="arr-out"></output>
+        <label id="arr-field"><span class="setting-name">ARR: Auto Repeat Rate</span> <output id="arr-out"></output>
           <input id="arr" type="range" min="0" max="5" step="1" />
           <span class="setting-help">Once it slides, the time between each step. 0 = it jumps straight to the wall.</span>
         </label>

@@ -57,7 +57,7 @@ import { drawCell, skinSheet, THEME_COLORS } from './skins';
 import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
-import { isLandscape, isTouchDevice, TouchPad, touchKeyMap, type TouchMode } from './touch';
+import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
   loadBestTicks,
@@ -69,6 +69,8 @@ import {
   loadRegion,
   loadTouchHandling,
   loadTouchMode,
+  loadTouchStyle,
+  loadSwipeSensitivity,
   saveBestTicks,
   saveBotLevel,
   saveGauntletBest,
@@ -78,6 +80,8 @@ import {
   saveRegion,
   saveTouchHandling,
   saveTouchMode,
+  saveTouchStyle,
+  saveSwipeSensitivity,
   TOUCH_HANDLING,
 } from './settings';
 
@@ -118,6 +122,9 @@ let handling = loadHandling();
 /** Touch buttons get their own handling: a thumb is slower than a finger on a key. */
 let touchHandling = loadTouchHandling();
 let touchMode: TouchMode = loadTouchMode();
+let touchStyle: TouchStyle = loadTouchStyle();
+let swipeSensitivity = loadSwipeSensitivity();
+setLabelStyle(touchStyle);
 let countdownStart = 0;
 /** The countdown number last shown, so each one beeps once. */
 let lastCountdownStep = -1;
@@ -194,13 +201,14 @@ function activeHandling(): typeof handling {
   return touchActive() ? touchHandling : handling;
 }
 
-/** Shows the buttons while playing (not in two-player local versus) and makes room for them. */
+/** Shows the touch controls while playing (not in two-player local versus); buttons get room of their own. */
 function refreshTouchPad(): void {
   const on = touchActive() && inGameScreen(screen) && mode !== 'versus';
-  touchPad.setVisible(on);
+  swipe.setVisible(on && touchStyle === 'swipe');
+  touchPad.setVisible(on && touchStyle === 'buttons');
   $('touch-back').classList.toggle('hidden', !on);
   const app = $('app');
-  if (!on) {
+  if (!touchPad.visible) {
     app.style.paddingBottom = '';
     return renderer.setReserved(0, 0);
   }
@@ -211,6 +219,13 @@ function refreshTouchPad(): void {
   const bottom = side ? 0 : touchPad.root.offsetHeight;
   app.style.paddingBottom = `${bottom}px`;
   renderer.setReserved(bottom, sides);
+}
+
+/** Your own board right now, in any mode. */
+function myGame(): Game | null {
+  if (mode === 'online') return online?.games?.[0] ?? null;
+  if (mode === 'bot') return match?.players[0] ?? null;
+  return game;
 }
 
 function inGameScreen(s: Screen): boolean {
@@ -300,7 +315,7 @@ function refreshTutorialTip(done = false): void {
   if (!tutorial) return;
   $('tutorial-step').textContent = tutorial.finished ? t('All done') : t('Step {n} of {total}', { n: tutorial.lesson + 1, total: tutorial.count });
   $('tutorial-title').textContent = tutorial.title();
-  $('tutorial-text').textContent = tutorial.text(touchActive() ? touchKeyMap() : prefs.keys);
+  $('tutorial-text').textContent = touchActive() ? tutorial.text(touchKeyMap(), touchStyle === 'swipe') : tutorial.text(prefs.keys);
   $('tutorial-end').classList.toggle('hidden', !tutorial.finished);
   $('tutorial-skip').classList.toggle('hidden', tutorial.finished);
   const tip = $('tutorial-tip');
@@ -764,6 +779,11 @@ function frame(now: number): void {
   lastFrame = now;
   // The upbeat track during play, the calm one everywhere else.
   music.play(sound.context, prefs.music === 0 ? null : inGame() ? 'match' : 'menu');
+  if (swipe.visible) {
+    // Swipe moves wait for a piece in play, so a drag started between pieces still lands.
+    swipe.cellPx = renderer.cellPx * (100 / swipeSensitivity);
+    swipe.flush(!!myGame()?.active);
+  }
   if (mode === 'online' && online) {
     const m = online;
     m.update(now, () => {
@@ -878,10 +898,20 @@ addEventListener('keyup', (e) => {
 addEventListener('blur', () => {
   allKeyboards.forEach((k) => k.releaseAll());
   touchPad.releaseAll();
+  swipe.cancel();
 });
 
 // On-screen buttons press made-up key codes that every solo key map binds.
 const touchPad = new TouchPad(
+  $('app'),
+  (code, key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(code);
+  },
+  (code) => soloKeys.keyUp(code),
+);
+const swipe = new SwipeControls(
   $('app'),
   (code, key) => {
     sound.unlock();
@@ -995,9 +1025,21 @@ function syncSettingsForm(): void {
   $('arr-out').textContent = h.arr === 0 ? t('0 (instant)') : framesLabel(h.arr);
   $('sdf-out').textContent = h.sdf >= SDF_INSTANT ? t('instant') : `${h.sdf}×`;
   $('handling-for').textContent = touchActive()
-    ? t('These settings are for the touch buttons. Your keyboard settings are kept separately.')
+    ? t('These settings are for touch controls. Your keyboard settings are kept separately.')
     : t('These settings are for the keyboard.');
   $('touch-mode').querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.mode === touchMode));
+  $('touch-style').querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.style === touchStyle));
+  $('touch-style-field').classList.toggle('hidden', !touchActive());
+  $('swipe-field').classList.toggle('hidden', !touchActive() || touchStyle !== 'swipe');
+  $('touch-style-help').textContent = touchStyle === 'swipe'
+    ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
+    : '';
+  // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
+  const swiping = touchActive() && touchStyle === 'swipe';
+  $('das-field').classList.toggle('hidden', swiping);
+  $('arr-field').classList.toggle('hidden', swiping);
+  swipeInput.value = String(swipeSensitivity);
+  $('swipe-out').textContent = `${swipeSensitivity}%`;
 }
 
 for (const [name, input] of Object.entries(sliders) as [keyof typeof sliders, HTMLInputElement][]) {
@@ -1021,6 +1063,27 @@ for (const option of ['auto', 'on', 'off'] as const) {
   });
   $('touch-mode').append(b);
 }
+
+const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { swipe: 'Swipe', buttons: 'Buttons' };
+for (const style of ['swipe', 'buttons'] as const) {
+  const b = document.createElement('button');
+  b.dataset.style = style;
+  b.textContent = t(TOUCH_STYLE_NAMES[style]);
+  b.addEventListener('click', () => {
+    touchStyle = style;
+    saveTouchStyle(style);
+    setLabelStyle(style);
+    syncSettingsForm();
+  });
+  $('touch-style').append(b);
+}
+
+const swipeInput = $<HTMLInputElement>('swipe-sens');
+swipeInput.addEventListener('input', () => {
+  swipeSensitivity = Number(swipeInput.value);
+  saveSwipeSensitivity(swipeSensitivity);
+  syncSettingsForm();
+});
 
 /** Two players can't share one phone screen, so touch players don't see local versus. */
 function refreshTouchMenu(): void {

@@ -44,9 +44,29 @@ const RIGHT: ButtonSpec[] = [
   { key: 'hardDrop', icon: '⤓', label: 'Hard drop' },
 ];
 
-/** What a touch button shows, by its made-up key code, e.g. for the tutorial's text. */
+const SWIPE_LABELS: Record<Key, string> = {
+  left: 'drag left',
+  right: 'drag right',
+  softDrop: 'drag down',
+  hardDrop: 'flick down',
+  rotateCW: 'tap the right side',
+  rotateCCW: 'tap the left side',
+  rotate180: 'the 180 button',
+  hold: 'flick up',
+};
+
+/** Which controls text about keys should describe. */
+let labelStyle: 'swipe' | 'buttons' = 'swipe';
+
+export function setLabelStyle(style: 'swipe' | 'buttons'): void {
+  labelStyle = style;
+}
+
+/** How to do an action by touch, by its made-up key code, e.g. for the tutorial's text. */
 export function touchLabel(code: string): string | undefined {
-  return [...LEFT, ...RIGHT].find((s) => touchCode(s.key) === code)?.icon;
+  const spec = [...LEFT, ...RIGHT].find((s) => touchCode(s.key) === code);
+  if (!spec) return undefined;
+  return labelStyle === 'swipe' ? t(SWIPE_LABELS[spec.key]) : spec.icon;
 }
 
 /** A key map of the touch buttons alone, so text about keys names the buttons instead. */
@@ -159,5 +179,149 @@ export class TouchPad {
   private buttonFor(key: Key): HTMLElement | undefined {
     for (const [el, k] of this.buttons) if (k === key) return el;
     return undefined;
+  }
+}
+
+export type TouchStyle = 'swipe' | 'buttons';
+
+/** Below this a finger hasn't really moved: a tap, not a drag. */
+const TAP_SLOP_PX = 12;
+const TAP_MAX_MS = 280;
+/** A flick: at least this fast (px per ms) over the last moment of the swipe. */
+const FLICK_SPEED = 0.5;
+const VELOCITY_WINDOW_MS = 100;
+/** A whole swipe this short counts as a flick whatever its speed at the end. */
+const FLICK_MAX_MS = 250;
+
+interface Finger {
+  id: number;
+  startX: number;
+  startY: number;
+  startAt: number;
+  /** Where the last whole cell of sideways movement was counted from. */
+  anchorX: number;
+  /** Moved sideways at least one cell, so it can't be a tap. */
+  moved: boolean;
+  softDrop: boolean;
+  samples: { y: number; at: number }[];
+}
+
+/**
+ * Swipe controls over the whole screen: drag sideways and the piece follows
+ * the finger a cell at a time, tap to rotate (right half clockwise, left half
+ * the other way), drag down to soft drop, flick down to hard drop, flick up
+ * to hold. Moves are queued and handed to the game only while a piece is in
+ * play, so a drag started just after a drop still counts.
+ */
+export class SwipeControls {
+  readonly root: HTMLElement;
+  private finger: Finger | null = null;
+  private queue: Key[] = [];
+  /** Screen pixels per board cell, times the sensitivity. */
+  cellPx = 30;
+
+  constructor(
+    parent: HTMLElement,
+    private down: (code: string, key: Key) => void,
+    private up: (code: string) => void,
+  ) {
+    this.root = document.createElement('div');
+    this.root.id = 'swipe';
+    this.root.className = 'swipe hidden';
+    parent.append(this.root);
+    const opts = { passive: false } as const;
+    this.root.addEventListener('pointerdown', (e) => this.start(e), opts);
+    this.root.addEventListener('pointermove', (e) => this.move(e), opts);
+    this.root.addEventListener('pointerup', (e) => this.end(e));
+    this.root.addEventListener('pointercancel', () => this.cancel());
+    this.root.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  get visible(): boolean {
+    return !this.root.classList.contains('hidden');
+  }
+
+  setVisible(on: boolean): void {
+    if (on === this.visible) return;
+    if (!on) this.cancel();
+    this.root.classList.toggle('hidden', !on);
+  }
+
+  /** Presses the queued taps; call each frame with whether a piece is in play. */
+  flush(ready: boolean): void {
+    if (!ready) return;
+    for (const key of this.queue) {
+      this.down(touchCode(key), key);
+      this.up(touchCode(key));
+    }
+    this.queue = [];
+  }
+
+  cancel(): void {
+    if (this.finger?.softDrop) this.up(touchCode('softDrop'));
+    this.finger = null;
+    this.queue = [];
+  }
+
+  private start(e: PointerEvent): void {
+    e.preventDefault();
+    // One finger steers; a second one is ignored.
+    if (this.finger) return;
+    this.root.setPointerCapture?.(e.pointerId);
+    this.finger = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startAt: e.timeStamp,
+      anchorX: e.clientX,
+      moved: false,
+      softDrop: false,
+      samples: [{ y: e.clientY, at: e.timeStamp }],
+    };
+  }
+
+  private move(e: PointerEvent): void {
+    const f = this.finger;
+    if (!f || e.pointerId !== f.id) return;
+    e.preventDefault();
+    f.samples.push({ y: e.clientY, at: e.timeStamp });
+    while (f.samples.length > 2 && e.timeStamp - f.samples[0].at > VELOCITY_WINDOW_MS) f.samples.shift();
+
+    const cell = Math.max(8, this.cellPx);
+    const cells = Math.trunc((e.clientX - f.anchorX) / cell);
+    if (cells !== 0) {
+      const key: Key = cells < 0 ? 'left' : 'right';
+      for (let i = 0; i < Math.abs(cells); i++) this.queue.push(key);
+      f.anchorX += cells * cell;
+      f.moved = true;
+    }
+    // Dragging down (more down than sideways) holds soft drop; going back up lets go.
+    const dy = e.clientY - f.startY;
+    const wantSoft = dy > cell * 1.5 && dy > Math.abs(e.clientX - f.startX);
+    if (wantSoft !== f.softDrop) {
+      f.softDrop = wantSoft;
+      if (wantSoft) this.down(touchCode('softDrop'), 'softDrop');
+      else this.up(touchCode('softDrop'));
+    }
+  }
+
+  private end(e: PointerEvent): void {
+    const f = this.finger;
+    if (!f || e.pointerId !== f.id) return;
+    this.finger = null;
+    if (f.softDrop) this.up(touchCode('softDrop'));
+    const dx = e.clientX - f.startX;
+    const dy = e.clientY - f.startY;
+    const first = f.samples[0];
+    const speed = e.timeStamp > first.at ? (e.clientY - first.y) / (e.timeStamp - first.at) : 0;
+    const cell = Math.max(8, this.cellPx);
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    // Fast at the end, or a short swipe done quickly as a whole.
+    const quick = e.timeStamp - f.startAt < FLICK_MAX_MS;
+    if (vertical && dy > cell * 2 && (speed > FLICK_SPEED || quick)) return void this.queue.push('hardDrop');
+    if (vertical && dy < -cell * 2 && (speed < -FLICK_SPEED || quick)) return void this.queue.push('hold');
+    if (!f.moved && Math.hypot(dx, dy) < TAP_SLOP_PX && e.timeStamp - f.startAt < TAP_MAX_MS) {
+      this.queue.push(e.clientX >= innerWidth / 2 ? 'rotateCW' : 'rotateCCW');
+    }
   }
 }

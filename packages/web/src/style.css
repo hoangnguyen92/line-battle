@@ -287,3 +287,8 @@ body.touch canvas { touch-action: none; }
   z-index: 2;
 }
 .touch-field { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/* Swipe controls: an invisible layer over the whole screen during play. */
+.swipe { position: absolute; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.swipe { z-index: 1; }
+.tip { z-index: 2; }

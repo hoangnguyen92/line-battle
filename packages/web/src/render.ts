@@ -97,6 +97,8 @@ export class Renderer {
   private reserved = { bottom: 0, sides: 0 };
   /** Versus on a tall, narrow screen: the opponent's board is drawn small. */
   private compact = false;
+  /** CSS pixels per canvas unit. */
+  private scale = 1;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -125,6 +127,11 @@ export class Renderer {
     this.resize();
   }
 
+  /** How wide one cell of your board is on screen, in CSS pixels. */
+  get cellPx(): number {
+    return CELL * this.scale;
+  }
+
   private get width(): number {
     return this.layout === 'solo' || this.compact ? VIEW_W : VIEW_W * 2 + VERSUS_GAP;
   }
@@ -139,6 +146,7 @@ export class Renderer {
     this.compact = this.layout === 'versus' && wide < narrow * 0.75;
     const w = this.width;
     const scale = Math.min(freeW / w, freeH / CANVAS_H, 1.6);
+    this.scale = scale;
     const dpr = devicePixelRatio || 1;
     this.canvas.style.width = `${Math.floor(w * scale)}px`;
     this.canvas.style.height = `${Math.floor(CANVAS_H * scale)}px`;
