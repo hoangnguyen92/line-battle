@@ -23,8 +23,8 @@ interface Flight<T> {
  */
 function playOnline(levels: [LevelId, LevelId], latency: [number, number], seed = 7, maxTicks = 60 * 120) {
   const ref = new RoundReferee(seed, [BOT_HANDLING, BOT_HANDLING]);
-  const players = [new OnlinePlayer(seed, BOT_HANDLING), new OnlinePlayer(seed, BOT_HANDLING)] as const;
-  const mirrors = [new StreamPlayer(seed, BOT_HANDLING), new StreamPlayer(seed, BOT_HANDLING)] as const;
+  const players = [new OnlinePlayer(seed, BOT_HANDLING, 0), new OnlinePlayer(seed, BOT_HANDLING, 1)] as const;
+  const mirrors = [new StreamPlayer(seed, BOT_HANDLING, 0), new StreamPlayer(seed, BOT_HANDLING, 1)] as const;
   const bots = levels.map((l, i) => {
     const level = { ...LEVELS[l], mistakeRate: 0 };
     const random = seeded(i + 1);
@@ -90,7 +90,7 @@ describe('online referee', () => {
       const mirror = mirrors[p].game;
       const server = ref.game(p);
       // The mirror lags the server by the relay delay; replay the server's log to its tick.
-      const atMirror = new StreamPlayer(ref.seed, BOT_HANDLING);
+      const atMirror = new StreamPlayer(ref.seed, BOT_HANDLING, p);
       const log = ref.log(p);
       atMirror.push({ upTo: mirror.tick, keys: log.keys.filter((k) => k[0] < mirror.tick), acks: log.acks.filter((a) => a[0] < mirror.tick) });
       expect(mirror.tick).toBeGreaterThan(server.tick - 20);
@@ -100,7 +100,7 @@ describe('online referee', () => {
 
   it('rebuilds a board from the log after a reconnect', () => {
     const { ref } = playOnline([3, 3], [2, 2], 3, 60 * 20);
-    const rebuilt = new OnlinePlayer(ref.seed, BOT_HANDLING, ref.log(0));
+    const rebuilt = new OnlinePlayer(ref.seed, BOT_HANDLING, 0, ref.log(0));
     expect(rebuilt.game.tick).toBe(ref.game(0).tick);
     expect(cells(rebuilt.game)).toBe(cells(ref.game(0)));
     expect(rebuilt.game.queue).toEqual(ref.game(0).queue);

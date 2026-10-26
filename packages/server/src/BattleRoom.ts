@@ -13,6 +13,7 @@ import {
   type Region,
   type ServerMessages,
 } from '@line-battle/engine';
+import { playersInMatches, releaseSlots, takeSlots } from './capacity';
 import { cleanName } from './names';
 import { RoundReferee } from './referee';
 import { getStore } from './services';
@@ -64,6 +65,8 @@ export interface BattleRoomOptions {
   region?: Region;
   countdownMs?: number;
   roundBreakMs?: number;
+  /** Player slots (see capacity.ts) the queue already took for this match. */
+  heldSlots?: number;
 }
 
 /**
@@ -90,8 +93,11 @@ export class BattleRoom extends Room {
   private rounds: OnlineRoundReplay[] = [];
   private countdownMs = COUNTDOWN_MS;
   private roundBreakMs = ROUND_BREAK_MS;
+  /** Player slots this room holds: one per player in it, or reserved for a queued player. */
+  private slots = 0;
 
   onCreate(options: BattleRoomOptions = {}): void {
+    this.slots = options.heldSlots ?? 0;
     this.countdownMs = options.countdownMs ?? COUNTDOWN_MS;
     this.roundBreakMs = options.roundBreakMs ?? ROUND_BREAK_MS;
     this.mode = options.mode ?? 'quick';
@@ -111,7 +117,19 @@ export class BattleRoom extends Room {
     // The queue already checked who this is when it held the seat.
     if ((client.auth as SeatAuth | undefined)?.queued) return true;
     if (this.mode !== 'private') throw new ServerError(403, 'Join this match through the queue.');
+    if (!takeSlots(1)) throw new ServerError(503, `The server is full right now (${playersInMatches()} playing). Try again in a minute, or use Quick match to wait in line.`);
+    this.slots++;
     return { user: getStore()?.userForToken(context.token) ?? null };
+  }
+
+  onDispose(): void {
+    this.giveBackSlots(this.slots);
+  }
+
+  private giveBackSlots(n: number): void {
+    n = Math.min(n, this.slots);
+    this.slots -= n;
+    releaseSlots(n);
   }
 
   onJoin(client: Client, options: { name?: unknown; handling?: unknown; look?: unknown } = {}): void {
@@ -167,6 +185,7 @@ export class BattleRoom extends Room {
   onLeave(client: Client): void {
     const p = this.seatOf(client);
     if (p === null) return;
+    this.giveBackSlots(1);
     if (this.seats.length < 2) {
       this.seats.splice(p, 1);
       return;
@@ -260,7 +279,7 @@ export class BattleRoom extends Room {
         reason,
         // Rejected inputs void the match (the plan's anti-cheat rule); a forfeit still counts.
         rated: reason !== 'invalid',
-        replay: { version: 1, kind: 'online', mode: this.mode, names, handling: [a.handling, b.handling], rounds: this.rounds, score, winner, reason },
+        replay: { version: 2, kind: 'online', mode: this.mode, names, handling: [a.handling, b.handling], rounds: this.rounds, score, winner, reason },
       });
       this.broadcastAll('saved', { matchId });
       if (changes) {

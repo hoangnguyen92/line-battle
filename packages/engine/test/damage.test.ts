@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attackFor, comboBonus, GARBAGE_CELL, KEYS, Match, MatchRecorder, playMatchReplay, Rng, type GameEvent, type KeyEvent } from '../src';
+import { attackFor, comboBonus, GARBAGE_CELL, KEYS, Match, MatchRecorder, playMatchReplay, Rng, type GameEvent, type MatchConfig, type KeyEvent } from '../src';
 import { newGame, setRows, stepN, tap } from './helpers';
 
 const clear = (lines: number, extra: Partial<Parameters<typeof attackFor>[0]> = {}) =>
@@ -9,6 +9,15 @@ const clear = (lines: number, extra: Partial<Parameters<typeof attackFor>[0]> = 
 function dropI(game: ReturnType<typeof newGame>): void {
   game.active = { type: 'I', x: 7, y: 21, rot: 1 };
   tap(game, 'hardDrop');
+}
+
+/** The hole column of each of the bottom `rows` rows, checking each is a garbage row with one hole. */
+function garbageHoles(game: ReturnType<typeof newGame>, rows: number): number[] {
+  return [...Array(rows).keys()].map((y) => {
+    const row = [...Array(10).keys()].map((x) => game.board.get(x, y));
+    expect(row.filter((v) => v === GARBAGE_CELL)).toHaveLength(9);
+    return row.indexOf(0);
+  });
 }
 
 const WELL = 'XXXXXXXXX.';
@@ -53,13 +62,24 @@ describe('garbage queue', () => {
     tap(g, 'hardDrop');
     expect(g.garbageReceived).toBe(3);
     expect(g.incomingLines).toBe(0);
-    // Three garbage rows at the bottom, each with one hole in the same column.
-    const holes = [0, 1, 2].map((y) => {
-      const row = [...Array(10).keys()].map((x) => g.board.get(x, y));
-      expect(row.filter((v) => v === GARBAGE_CELL)).toHaveLength(9);
-      return row.indexOf(0);
-    });
-    expect(new Set(holes).size).toBe(1);
+    // Three garbage rows at the bottom, each with one hole.
+    expect(garbageHoles(g, 3)).toHaveLength(3);
+  });
+
+  it('gives each line its own random hole', () => {
+    const g = newGame();
+    g.receiveGarbage(8);
+    stepN(g, 20);
+    tap(g, 'hardDrop');
+    expect(new Set(garbageHoles(g, 8)).size).toBeGreaterThan(1);
+  });
+
+  it('lines up the holes of one attack in perAttack mode', () => {
+    const g = newGame({ garbageHoles: 'perAttack' });
+    g.receiveGarbage(3);
+    stepN(g, 20);
+    tap(g, 'hardDrop');
+    expect(new Set(garbageHoles(g, 3)).size).toBe(1);
   });
 
   it('cancels incoming garbage before sending', () => {
@@ -104,12 +124,12 @@ describe('garbage queue', () => {
     expect(g.garbageReceived).toBe(12);
   });
 
-  it('keeps one hole per attack and sometimes moves it between attacks', () => {
-    const g = newGame({ garbageMessiness: 100 });
+  it('in perAttack mode, sometimes moves the hole between attacks', () => {
+    const g = newGame({ garbageHoles: 'perAttack', garbageMessiness: 100 });
     g.receiveGarbage(2);
     g.receiveGarbage(2);
     expect(g.incoming[0].hole).not.toBe(g.incoming[1].hole);
-    const calm = newGame({ garbageMessiness: 0 });
+    const calm = newGame({ garbageHoles: 'perAttack', garbageMessiness: 0 });
     for (let i = 0; i < 5; i++) calm.receiveGarbage(1);
     expect(new Set(calm.incoming.map((x) => x.hole)).size).toBe(1);
   });
@@ -144,6 +164,25 @@ describe('match', () => {
       m.step([[{ key: 'hardDrop', down: i % 2 === 0 }], []]);
     }
     expect(m.result).toBe(1);
+  });
+
+  it('gives each player the same pieces but their own garbage holes', () => {
+    const holesOf = (config: MatchConfig) => {
+      const m = new Match(config);
+      expect(m.players[0].queue).toEqual(m.players[1].queue);
+      return m.players.map((g) => {
+        for (let i = 0; i < 4; i++) g.receiveGarbage(2);
+        stepN(g, 20);
+        tap(g, 'hardDrop');
+        return garbageHoles(g, 8).join();
+      });
+    };
+    const players: MatchConfig['players'] = [{ entryDelay: 0 }, { entryDelay: 0 }];
+    const [a, b] = holesOf({ seed: 9, players });
+    expect(a).not.toBe(b);
+    // Version 1 replays were recorded with both boards sharing holes.
+    const [c, d] = holesOf({ seed: 9, players, sharedGarbage: true });
+    expect(c).toBe(d);
   });
 
   it('replays a round exactly', () => {

@@ -1,4 +1,5 @@
 import { KEYS, type Key, type KeyEvent, type KeyMap } from '@line-battle/engine';
+import { t } from './i18n';
 
 export type Bindings = Record<string, Key>;
 
@@ -56,7 +57,7 @@ export function keyLabel(code: string): string {
 
 /** "← or X" style text for an action's keys. */
 export function keysText(codes: readonly string[]): string {
-  return codes.length ? codes.map(keyLabel).join(' or ') : 'none';
+  return codes.length ? codes.map(keyLabel).join(` ${t('or')} `) : t('none');
 }
 
 /** Keys the game needs for itself and so can't be bound. */

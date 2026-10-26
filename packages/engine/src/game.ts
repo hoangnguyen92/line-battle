@@ -49,12 +49,30 @@ export interface GameConfig {
   garbageCap?: number;
   /** Percent chance that a new attack's hole is in a different column. Default 30. */
   garbageMessiness?: number;
+  /** Seeds where garbage holes go. Default: derived from `seed` (see garbageSeed). */
+  garbageSeed?: number;
+  /**
+   * 'perLine' (default) gives every garbage line its own random hole.
+   * 'perAttack' lines up the holes of one attack in a column, as before
+   * replay version 2; garbageMessiness only applies to this mode.
+   */
+  garbageHoles?: 'perLine' | 'perAttack';
+}
+
+/**
+ * The garbage hole seed for a board. In a match each player gets their own
+ * (`player` 0 or 1), so the two boards share pieces but not holes; `null` is
+ * the single shared sequence that solo games and older replays use.
+ */
+export function garbageSeed(seed: number, player: 0 | 1 | null): number {
+  const shared = (seed ^ 0x5bd1e995) >>> 0;
+  return player === null ? shared : (shared ^ Math.imul(player + 1, 0x9e3779b9)) >>> 0;
 }
 
 /** Garbage waiting to rise: one entry per received attack. */
 export interface PendingGarbage {
   lines: number;
-  /** Column of the hole; every line of one attack shares it. */
+  /** Column of the hole that every line of this attack shares; -1 for 'perLine' holes. */
   hole: number;
   /** First tick this garbage may rise. */
   readyTick: number;
@@ -177,10 +195,12 @@ export class Game {
       garbageDelay: 20,
       garbageCap: 8,
       garbageMessiness: 30,
+      garbageSeed: garbageSeed(config.seed, null),
+      garbageHoles: 'perLine',
       ...config,
     };
     this.bag = new Bag(config.seed);
-    this.garbageRng = new Rng(config.seed ^ 0x5bd1e995);
+    this.garbageRng = new Rng(this.config.garbageSeed);
     this.spawn(this.takeNext());
   }
 
@@ -205,6 +225,11 @@ export class Game {
    */
   receiveGarbage(lines: number): void {
     if (lines <= 0 || this.over) return;
+    const readyTick = this.tick + this.config.garbageDelay;
+    if (this.config.garbageHoles === 'perLine') {
+      this.incoming.push({ lines, hole: -1, readyTick });
+      return;
+    }
     const { garbageRng: rng } = this;
     let hole = this.lastHole;
     if (hole < 0) {
@@ -213,7 +238,7 @@ export class Game {
       hole = (hole + 1 + rng.int(BOARD_WIDTH - 1)) % BOARD_WIDTH;
     }
     this.lastHole = hole;
-    this.incoming.push({ lines, hole, readyTick: this.tick + this.config.garbageDelay });
+    this.incoming.push({ lines, hole, readyTick });
   }
 
   /** Returns and clears the events produced since the last call. */
@@ -578,7 +603,11 @@ export class Game {
     while (budget > 0 && this.incoming.length > 0 && this.incoming[0].readyTick <= this.tick) {
       const g = this.incoming[0];
       const n = Math.min(budget, g.lines);
-      ok = this.board.addGarbage(n, g.hole, GARBAGE_CELL) && ok;
+      if (this.config.garbageHoles === 'perAttack') {
+        ok = this.board.addGarbage(n, g.hole, GARBAGE_CELL) && ok;
+      } else {
+        for (let i = 0; i < n; i++) ok = this.board.addGarbage(1, this.garbageRng.int(BOARD_WIDTH), GARBAGE_CELL) && ok;
+      }
       g.lines -= n;
       budget -= n;
       risen += n;

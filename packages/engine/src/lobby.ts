@@ -113,7 +113,18 @@ export interface QueueJoinOptions {
 /** Queue server to client messages. */
 export interface QueueMessages {
   /** Sent on joining and every few seconds while waiting. */
-  searching: { waitedMs: number; region: Region; rating: number; range: number; anyRegion: boolean; inQueue: number };
+  searching: {
+    waitedMs: number;
+    region: Region;
+    rating: number;
+    range: number;
+    anyRegion: boolean;
+    inQueue: number;
+    /** The server is at its player cap: matches start as slots free up. */
+    serverFull?: boolean;
+    /** Players in online matches right now. */
+    playing?: number;
+  };
   /** An opponent was found: join the match with this seat reservation. */
   matched: { reservation: unknown };
 }
@@ -135,7 +146,8 @@ export interface OnlineRoundReplay {
 
 /** A whole online match, as the server refereed it. */
 export interface OnlineReplay {
-  version: 1;
+  /** 2 since each player got their own garbage holes. */
+  version: 1 | 2;
   kind: 'online';
   matchId: number;
   mode: MatchMode;
@@ -150,9 +162,10 @@ export interface OnlineReplay {
 /** Re-runs one round of an online replay: both boards, as the server saw them. */
 export function playOnlineRound(replay: OnlineReplay, round: number): [StreamPlayer, StreamPlayer] {
   const r = replay.rounds[round];
+  const shared = replay.version === 1;
   const players: [StreamPlayer, StreamPlayer] = [
-    new StreamPlayer(r.seed, replay.handling[0]),
-    new StreamPlayer(r.seed, replay.handling[1]),
+    new StreamPlayer(r.seed, replay.handling[0], shared ? null : 0),
+    new StreamPlayer(r.seed, replay.handling[1], shared ? null : 1),
   ];
   players.forEach((p, i) => p.push(r.logs[i]));
   return players;

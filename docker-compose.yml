@@ -9,6 +9,9 @@ services:
     restart: unless-stopped
     # The SQLite database with accounts, ratings and match history.
     volumes: [game-data:/data]
+    environment:
+      # Most players in online matches at once; the rest wait in the queue.
+      MAX_PLAYERS: ${MAX_PLAYERS:-500}
 
   web:
     build: { context: ., target: web }

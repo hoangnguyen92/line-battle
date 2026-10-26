@@ -94,12 +94,13 @@ async function playOne(n: number): Promise<void> {
     timer = null;
   };
   let local: OnlinePlayer | null = null;
+  let you: 0 | 1 = 0;
   await new Promise<void>((resolve) => {
     room.onMessage('garbage', (g: ServerMessages['garbage']) => local?.receive(g));
     room.onMessage('round', (r: ServerMessages['round']) => {
       stop();
       stats.rounds++;
-      const player = new OnlinePlayer(r.seed, DEFAULT_HANDLING);
+      const player = new OnlinePlayer(r.seed, DEFAULT_HANDLING, you);
       local = player;
       const start = Date.now() + r.countdownMs;
       timer = setInterval(() => {
@@ -118,7 +119,8 @@ async function playOne(n: number): Promise<void> {
       if (m.reason === 'invalid') stats.invalid++;
       resolve();
     });
-    for (const t of ['match', 'opp', 'oppStatus', 'resync', 'rematch', 'rating', 'saved', 'waiting'] as const) room.onMessage(t, () => {});
+    room.onMessage('match', (m: ServerMessages['match']) => (you = m.you));
+    for (const t of ['opp', 'oppStatus', 'resync', 'rematch', 'rating', 'saved', 'waiting'] as const) room.onMessage(t, () => {});
     room.onLeave(() => {
       stop();
       resolve();

@@ -1,4 +1,5 @@
 import { Client, type Room } from '@colyseus/sdk';
+import { t } from './i18n';
 import {
   BATTLE_ROOM,
   DEFAULT_LOOK,
@@ -128,8 +129,9 @@ export class OnlineMatch {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.setPhase('closed');
-      if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(`No open room with code ${how.code.toUpperCase()}.`);
-      else this.events.error(`Can't reach the match server (${SERVER_URL}). Is it running?`);
+      if (/server is full/i.test(msg)) this.events.error(t('The server is full right now. Try again in a minute, or use Quick match to wait in line.'));
+      else if (how.kind === 'join' && /not found|locked|full/i.test(msg)) this.events.error(t('No open room with code {code}.', { code: how.code.toUpperCase() }));
+      else this.events.error(t("Can't reach the match server ({url}). Is it running?", { url: SERVER_URL }));
     }
   }
 
@@ -143,7 +145,7 @@ export class OnlineMatch {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.setPhase('closed');
-      this.events.error(/log in/i.test(msg) ? 'Log in to play ranked.' : `Can't reach the match server (${SERVER_URL}). Is it running?`);
+      this.events.error(/log in/i.test(msg) ? t('Log in to play ranked.') : t("Can't reach the match server ({url}). Is it running?", { url: SERVER_URL }));
       return;
     }
     if (this.left) return void queue.leave(true);
@@ -162,7 +164,7 @@ export class OnlineMatch {
         else this.attach(room);
       } catch {
         this.setPhase('closed');
-        this.events.error('The match could not start. Try again.');
+        this.events.error(t('The match could not start. Try again.'));
       }
       this.queue = null;
       void queue.leave(true);
@@ -171,7 +173,7 @@ export class OnlineMatch {
       if (matched || this.left) return;
       this.queue = null;
       this.setPhase('closed');
-      this.events.error(code === 4000 ? 'You joined the queue from another tab.' : 'Lost the connection to the match server.');
+      this.events.error(t(code === 4000 ? 'You joined the queue from another tab.' : 'Lost the connection to the match server.'));
     });
   }
 
@@ -262,15 +264,15 @@ export class OnlineMatch {
       this.room = null;
       if (this.left || this.phase === 'matchEnd') return;
       this.setPhase('closed');
-      this.events.error('Lost the connection to the match server.');
+      this.events.error(t('Lost the connection to the match server.'));
     });
   }
 
   private startRound(round: number, seed: number, countdownMs: number): void {
     const [mine, theirs] = this.handling!;
     this.round = round;
-    this.local = new OnlinePlayer(seed, mine);
-    this.mirror = new StreamPlayer(seed, theirs);
+    this.local = new OnlinePlayer(seed, mine, this.you);
+    this.mirror = new StreamPlayer(seed, theirs, (1 - this.you) as 0 | 1);
     this.countdownMs = countdownMs;
     this.playStart = performance.now() + countdownMs;
     this.lastWinner = null;
@@ -288,13 +290,13 @@ export class OnlineMatch {
       this.local.resendFrom(r.logs[this.you].upTo);
     } else {
       this.round = r.round;
-      this.local = new OnlinePlayer(r.seed, mine, r.logs[this.you]);
+      this.local = new OnlinePlayer(r.seed, mine, this.you, r.logs[this.you]);
       this.playStart = performance.now() - r.elapsedMs;
       this.setPhase(r.elapsedMs < 0 ? 'countdown' : 'playing');
     }
     for (const g of r.pending) this.local.receive(g);
     // The opponent's view is simply rebuilt from their whole stream.
-    this.mirror = new StreamPlayer(r.seed, theirs);
+    this.mirror = new StreamPlayer(r.seed, theirs, other);
     this.mirror.push(r.logs[other]);
     this.mirror.game.drainEvents();
   }
