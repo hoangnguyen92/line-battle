@@ -154,8 +154,21 @@ export class Renderer {
       if (hud.countdown) this.drawCenterText(hud.countdown);
       c.restore();
     });
+    // Round clock between the boards; your board's tick, since online the opponent's lags a little.
+    this.drawClock(match.players[0].tick);
     if (hud.banner) this.drawBanner(hud.banner);
     if (hud.status) this.drawStatus(hud.status);
+  }
+
+  private drawClock(ticks: number): void {
+    const c = this.ctx;
+    const x = this.width / 2;
+    // Above the names; a status line, when there is one, covers it.
+    this.label('TIME', x, 16, 'center');
+    c.fillStyle = this.theme.value;
+    c.font = `700 22px ${FONT}`;
+    c.textAlign = 'center';
+    c.fillText(formatTime(ticks).slice(0, -2), x, 40);
   }
 
   /** The character's little stage under the next queue. */
