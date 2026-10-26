@@ -107,11 +107,18 @@ const VI: Record<string, string> = {
     'Trận online thắng 2 hiệp là thắng và dùng phím của chế độ sprint. Xếp hạng và đấu nhanh ghép bạn với người chơi gần điểm của bạn, ưu tiên cùng khu vực. Xếp hạng làm thay đổi điểm của bạn và cần có tài khoản. Tạo phòng rồi gửi mã cho bạn bè để đấu trực tiếp. Vượt ải lần lượt đấu cả 5 máy từ Mới chơi đến Chuyên gia; thua một trận là kết thúc. Mỗi trận thắng 2 hiệp là thắng. Đòn tấn công của bạn trước hết sẽ triệt tiêu hàng rác đang chờ bạn; phần còn lại gửi sang đối thủ. Thanh bên cạnh mỗi bảng cho thấy hàng rác sắp tới (cam = vẫn triệt tiêu được, đỏ = sẽ dâng lên ở khối tiếp theo không xóa được hàng nào).',
 
   // ---- handling
-  'DAS': 'DAS',
-  'ARR': 'ARR',
-  'Soft drop speed': 'Tốc độ rơi nhanh',
-  'DAS is the wait before a held key starts repeating. ARR is the time between repeats (0 = jump to the wall).':
-    'DAS là thời gian chờ trước khi phím giữ bắt đầu lặp lại. ARR là khoảng cách giữa các lần lặp (0 = lao thẳng vào tường).',
+  'DAS: Delayed Auto Shift': 'DAS: Độ trễ tự trượt',
+  'ARR: Auto Repeat Rate': 'ARR: Tốc độ lặp tự động',
+  'SDF: Soft drop speed': 'SDF: Tốc độ rơi nhanh',
+  'How long you hold left or right before the piece starts sliding on its own. Lower = slides sooner.':
+    'Thời gian giữ phím trái hoặc phải trước khi khối tự trượt. Càng thấp = trượt càng sớm.',
+  'Once it slides, the time between each step. 0 = it jumps straight to the wall.':
+    'Khi đã trượt, đây là thời gian giữa mỗi bước. 0 = khối lao thẳng vào tường.',
+  'How much faster the piece falls while you hold soft drop. All the way right = instant.':
+    'Khối rơi nhanh hơn bao nhiêu khi bạn giữ phím rơi nhanh. Kéo hết sang phải = tức thì.',
+  '1 frame = 1/60 of a second (about 17 ms).': '1 khung hình = 1/60 giây (khoảng 17 ms).',
+  'Beside each board: SENT = garbage lines sent this round, APM = attack (garbage lines sent) per minute, PPS = pieces placed per second.':
+    'Bên cạnh mỗi bảng: ĐÃ GỬI = số hàng rác đã gửi trong hiệp, APM = số hàng tấn công (hàng rác gửi đi) mỗi phút, PPS = số khối đặt mỗi giây.',
   'Defaults': 'Mặc định',
   'Done': 'Xong',
   '{n} frames ({ms} ms)': '{n} khung hình ({ms} ms)',

@@ -79,6 +79,9 @@ button.link { background: none; border: none; color: var(--muted); text-decorati
 
 label { display: flex; flex-direction: column; gap: 4px; width: 280px; text-align: left; font-size: 14px; }
 label output { color: var(--muted); }
+.setting-name { font-weight: 600; }
+.setting-help { color: var(--muted); font-size: 12px; }
+#settings label { width: 320px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 .tables { align-items: flex-start; gap: 24px; }

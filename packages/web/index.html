@@ -89,21 +89,25 @@
         </table>
         </div>
         <p class="hint wide">Online matches are first to 2 rounds and use the sprint keys. Ranked and quick match pair you with a player near your rating, in your region first. Ranked moves your rating and needs an account. Create a room and send its code to a friend to play them directly. The gauntlet runs through all 5 bots from Beginner to Expert; lose a match and the run ends. Every match is first to 2 rounds. Your attacks cancel garbage waiting for you first; the rest goes to your opponent. The bar beside each board shows incoming garbage (orange = still cancellable, red = rises on your next piece that clears nothing).</p>
+        <p class="hint wide">Beside each board: SENT = garbage lines sent this round, APM = attack (garbage lines sent) per minute, PPS = pieces placed per second.</p>
         </details>
       </section>
 
       <section id="settings" class="overlay hidden">
         <h2>Handling</h2>
-        <label>DAS <output id="das-out"></output>
+        <label><span class="setting-name">DAS: Delayed Auto Shift</span> <output id="das-out"></output>
           <input id="das" type="range" min="0" max="20" step="1" />
+          <span class="setting-help">How long you hold left or right before the piece starts sliding on its own. Lower = slides sooner.</span>
         </label>
-        <label>ARR <output id="arr-out"></output>
+        <label><span class="setting-name">ARR: Auto Repeat Rate</span> <output id="arr-out"></output>
           <input id="arr" type="range" min="0" max="5" step="1" />
+          <span class="setting-help">Once it slides, the time between each step. 0 = it jumps straight to the wall.</span>
         </label>
-        <label>Soft drop speed <output id="sdf-out"></output>
+        <label><span class="setting-name">SDF: Soft drop speed</span> <output id="sdf-out"></output>
           <input id="sdf" type="range" min="5" max="41" step="1" />
+          <span class="setting-help">How much faster the piece falls while you hold soft drop. All the way right = instant.</span>
         </label>
-        <p class="hint">DAS is the wait before a held key starts repeating. ARR is the time between repeats (0 = jump to the wall).</p>
+        <p class="hint">1 frame = 1/60 of a second (about 17 ms).</p>
         <div class="row">
           <button id="reset-settings">Defaults</button>
           <button id="close-settings" class="primary">Done</button>
