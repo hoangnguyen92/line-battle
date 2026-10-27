@@ -21,7 +21,7 @@ const configuredServer: string = import.meta.env.VITE_SERVER_URL || '';
  * /api to the match server, and so does the Vite dev server. A built page
  * pointed at a match server elsewhere by a full VITE_SERVER_URL asks it directly.
  */
-const API_BASE =
+export const API_BASE =
   !import.meta.env.DEV && /^wss?:\/\//.test(configuredServer) ? configuredServer.replace(/^ws/, 'http').replace(/\/$/, '') : '';
 
 export class ApiError extends Error {

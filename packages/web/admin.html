@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Line Battle dashboard</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/admin.css" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Line Battle dashboard</h1>
+      <span id="updated" class="muted"></span>
+      <button id="refresh" type="button">Làm mới</button>
+      <button id="logout" type="button" class="hidden">Đổi mật khẩu</button>
+    </header>
+
+    <form id="login" class="card login hidden">
+      <label for="key">Mật khẩu dashboard (ADMIN_KEY trong .env của server)</label>
+      <input id="key" type="password" autocomplete="current-password" required />
+      <button type="submit">Mở</button>
+      <p id="login-error" class="error"></p>
+    </form>
+
+    <main id="dash" class="hidden">
+      <section>
+        <h2>Ngay lúc này</h2>
+        <div id="now" class="tiles"></div>
+      </section>
+
+      <section>
+        <h2>Server, 24 giờ qua</h2>
+        <div id="charts" class="charts"></div>
+      </section>
+
+      <section>
+        <h2>Người chơi</h2>
+        <div id="players" class="tiles"></div>
+        <div class="card"><div class="scroll"><table id="days"></table></div></div>
+      </section>
+
+      <div class="two">
+        <section>
+          <h2>Đến từ đâu <span class="muted">(30 ngày, theo lần đầu vào)</span></h2>
+          <div class="card"><table id="sources"></table></div>
+        </section>
+        <section>
+          <h2>Chơi gì <span class="muted">(7 ngày)</span></h2>
+          <div class="card"><table id="modes"></table></div>
+        </section>
+      </div>
+
+      <section>
+        <h2>Bấm vào đâu <span class="muted">(7 ngày)</span></h2>
+        <div class="card"><div class="scroll"><table id="clicks"></table></div></div>
+      </section>
+
+      <section>
+        <h2>Video</h2>
+        <form id="social-form" class="card social-form">
+          <label>Ngày <input name="day" type="date" required /></label>
+          <label>Nền tảng
+            <select name="platform">
+              <option value="youtube">YouTube</option>
+              <option value="tiktok">TikTok</option>
+              <option value="facebook">Facebook</option>
+            </select>
+          </label>
+          <label>Tổng view <input name="views" type="number" min="0" value="0" /></label>
+          <label>Like <input name="likes" type="number" min="0" value="0" /></label>
+          <label>Comment <input name="comments" type="number" min="0" value="0" /></label>
+          <label>Follower <input name="followers" type="number" min="0" value="0" /></label>
+          <button type="submit">Lưu</button>
+          <p class="muted hint">Nhập số tổng của cả kênh mỗi ngày (lấy trong YouTube Studio, TikTok Studio, Meta Business). Bảng bên dưới tự tính phần tăng thêm.</p>
+        </form>
+        <div class="card"><div class="scroll"><table id="social"></table></div></div>
+      </section>
+    </main>
+    <script type="module" src="/src/admin.ts"></script>
+  </body>
+</html>

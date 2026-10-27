@@ -14,6 +14,8 @@ import {
   type SessionResponse,
   type ShopInfo,
 } from '@line-battle/engine';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import type { Metrics } from './metrics';
 import { checkPassword, hashPassword, newToken } from './passwords';
 import type { PaymentProvider } from './payments';
 import type { Store, User } from './store';
@@ -40,6 +42,8 @@ export interface ApiResponse {
 /** Sign-up and login attempts allowed per address per window. */
 export const AUTH_ATTEMPTS = 10;
 export const AUTH_WINDOW_MS = 60_000;
+/** Statistics batches allowed per address per minute; a page sends about three. */
+export const TRACK_PER_MINUTE = 30;
 
 const ok = (body: unknown, status = 200): ApiResponse => ({ status, body });
 const fail = (status: number, error: string): ApiResponse => ({ status, body: { error } });
@@ -72,13 +76,18 @@ class RateLimiter {
  */
 export class Api {
   private limiter: RateLimiter;
+  private trackLimiter: RateLimiter;
 
+  /** `adminKey` opens the dashboard's endpoints; without one they don't exist. */
   constructor(
     private store: Store,
     now: () => number = Date.now,
     private payments: PaymentProvider[] = [],
+    private metrics: Metrics | null = null,
+    private adminKey: string | null = null,
   ) {
     this.limiter = new RateLimiter(AUTH_ATTEMPTS, AUTH_WINDOW_MS, now);
+    this.trackLimiter = new RateLimiter(TRACK_PER_MINUTE, 60_000, now);
   }
 
   async handle(req: ApiRequest): Promise<ApiResponse> {
@@ -110,6 +119,17 @@ export class Api {
     if (method === 'POST' && a === 'shop' && b === 'checkout' && parts.length === 2) return this.checkout(req);
     if (method === 'POST' && a === 'pay' && b && c === 'webhook' && parts.length === 3) return this.webhook(b, req);
     if (method === 'POST' && a === 'shop' && b === 'buy' && parts.length === 2) return this.withUser(req, (u) => this.buy(u, req.body));
+    if (method === 'POST' && a === 'track' && parts.length === 1 && this.metrics) {
+      if (!this.trackLimiter.allow(req.ip)) return ok({ kept: 0 });
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      return ok({ kept: this.metrics.record(body.v, body.events) });
+    }
+    if (a === 'admin' && parts.length === 2 && this.metrics && this.adminKey) {
+      if (!this.limiter.allow(`admin:${req.ip}`) && !this.isAdmin(req.token)) return fail(429, 'Too many attempts. Wait a minute and try again.');
+      if (!this.isAdmin(req.token)) return fail(401, 'Wrong admin key.');
+      if (method === 'GET' && b === 'dashboard') return ok(this.metrics.dashboard());
+      if (method === 'POST' && b === 'social') return this.metrics.saveSocial(req.body) ? ok({ ok: true }) : fail(400, 'Need a day (YYYY-MM-DD) and a platform.');
+    }
     if (method === 'GET' && a === 'leaderboard' && parts.length === 1) return ok(this.store.leaderboard());
     if (method === 'GET' && a === 'matches' && b && c === 'replay' && parts.length === 3) {
       const id = Number(b);
@@ -117,6 +137,12 @@ export class Api {
       return replay ? ok(replay) : fail(404, 'No such match.');
     }
     return fail(404, 'Not found.');
+  }
+
+  private isAdmin(token: string | null): boolean {
+    if (!token || !this.adminKey) return false;
+    const digest = (v: string) => createHash('sha256').update(v).digest();
+    return timingSafeEqual(digest(token), digest(this.adminKey));
   }
 
   private withUser(req: ApiRequest, fn: (user: User) => ApiResponse): ApiResponse {
