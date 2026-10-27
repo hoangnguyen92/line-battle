@@ -129,7 +129,6 @@ export class Api {
       if (!this.isAdmin(req.token)) return fail(401, 'Wrong admin key.');
       if (method === 'GET' && b === 'dashboard') return ok(this.metrics.dashboard());
       if (method === 'GET' && b === 'live') return ok(this.metrics.liveNow());
-      if (method === 'POST' && b === 'social') return this.metrics.saveSocial(req.body) ? ok({ ok: true }) : fail(400, 'Need a day (YYYY-MM-DD) and a platform.');
     }
     if (method === 'GET' && a === 'leaderboard' && parts.length === 1) return ok(this.store.leaderboard());
     if (method === 'GET' && a === 'matches' && b && c === 'replay' && parts.length === 3) {

@@ -1,5 +1,5 @@
-// The owner's dashboard: play statistics, the server's health and video
-// numbers, from /api/admin/dashboard. The key is ADMIN_KEY on the server.
+// The owner's dashboard: play statistics and the server's health, from
+// /api/admin/dashboard. The key is ADMIN_KEY on the server.
 
 const KEY_STORE = 'lineBattle.adminKey';
 const REFRESH_MS = 30_000;
@@ -39,7 +39,6 @@ interface Dashboard {
     };
     last24h: SystemSample[];
   };
-  social: { day: string; platform: string; views: number; likes: number; comments: number; followers: number }[];
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -291,20 +290,6 @@ function render(d: Dashboard): void {
     ]),
   );
 
-  // Totals per platform per day, with the change since that platform's previous entry.
-  const prev = new Map<string, (typeof d.social)[number]>();
-  const rows = [...d.social].reverse().map((r) => {
-    const p = prev.get(r.platform);
-    prev.set(r.platform, r);
-    const delta = (k: 'views' | 'likes' | 'comments' | 'followers') => {
-      const span = el('span', fmt(r[k]));
-      if (p && r[k] > p[k]) span.append(' ', el('span', `+${fmt(r[k] - p[k])}`, 'up'));
-      return span;
-    };
-    return [r.day.split('-').reverse().join('/'), { youtube: 'YouTube', tiktok: 'TikTok', facebook: 'Facebook' }[r.platform] ?? r.platform, delta('views'), delta('likes'), delta('comments'), delta('followers')];
-  });
-  table($('social'), ['Ngày', 'Nền tảng', 'View', 'Like', 'Comment', 'Follower'], rows.reverse(), 'Chưa nhập số video nào');
-
   $('updated').textContent = `Cập nhật ${new Date(d.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
@@ -391,30 +376,6 @@ $('logout').addEventListener('click', () => {
   showLogin();
 });
 $('refresh').addEventListener('click', () => void load());
-
-const form = $<HTMLFormElement>('social-form');
-(form.elements.namedItem('day') as HTMLInputElement).valueAsDate = new Date();
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const field = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
-  const button = form.querySelector('button')!;
-  button.disabled = true;
-  try {
-    await call('POST', '/api/admin/social', {
-      day: field('day'),
-      platform: field('platform'),
-      views: Number(field('views')),
-      likes: Number(field('likes')),
-      comments: Number(field('comments')),
-      followers: Number(field('followers')),
-    });
-    await load();
-  } catch (err) {
-    alert((err as Error).message);
-  } finally {
-    button.disabled = false;
-  }
-});
 
 void load();
 setInterval(() => {

@@ -13,8 +13,6 @@
   played and for how long.
 - **What they play:** games per mode, finished vs quit, average length.
 - **What they press:** clicks per button.
-- **Videos:** YouTube / TikTok / Facebook totals you type in each day; the
-  table shows the change since the last entry.
 
 The page sends anonymous events to `/api/track`: a random visitor id kept in
 the browser, no names, IP addresses or keystrokes. Raw events are kept 120 days.

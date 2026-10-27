@@ -89,14 +89,4 @@ describe('metrics', () => {
     const closed = new Api(store, () => now, [], metrics, null);
     expect((await closed.handle(req('GET', '/api/admin/dashboard', null, 'anything'))).status).toBe(404);
   });
-
-  it('saves video numbers per day and platform, replacing the same day', async () => {
-    const save = (body: unknown) => api.handle(req('POST', '/api/admin/social', body, 'secret-key'));
-    expect((await save({ day: '2026-10-27', platform: 'facebook', views: 258 })).status).toBe(200);
-    expect((await save({ day: '2026-10-27', platform: 'facebook', views: 300, likes: 2 })).status).toBe(200);
-    expect((await save({ day: 'today', platform: 'facebook' })).status).toBe(400);
-    expect((await save({ day: '2026-10-27', platform: 'myspace' })).status).toBe(400);
-    const d = metrics.dashboard() as any;
-    expect(d.social).toEqual([{ day: '2026-10-27', platform: 'facebook', views: 300, likes: 2, comments: 0, followers: 0 }]);
-  });
 });

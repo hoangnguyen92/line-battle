@@ -14,8 +14,6 @@ const EVENTS_KEEP_MS = 120 * DAY_MS;
 const ONLINE_MS = 75 * 1000;
 
 export const EVENT_NAMES = ['visit', 'click', 'play', 'game-finished', 'game-quit', 'game-left', 'time', 'signup'] as const;
-export const PLATFORMS = ['youtube', 'tiktok', 'facebook'] as const;
-export type Platform = (typeof PLATFORMS)[number];
 
 const VISITOR = /^[a-z0-9]{16}$/;
 const DETAIL = /^[a-z0-9._:-]{1,48}$/i;
@@ -48,15 +46,6 @@ CREATE TABLE IF NOT EXISTS system_samples (
   net_rx INTEGER NOT NULL,
   net_tx INTEGER NOT NULL,
   playing INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS social_stats (
-  day TEXT NOT NULL,
-  platform TEXT NOT NULL,
-  views INTEGER NOT NULL,
-  likes INTEGER NOT NULL,
-  comments INTEGER NOT NULL,
-  followers INTEGER NOT NULL,
-  PRIMARY KEY (day, platform)
 );
 `;
 
@@ -120,8 +109,8 @@ function cpuTimes(): { idle: number; total: number } {
 }
 
 /**
- * The game's own statistics: anonymous play events from the page, samples
- * of the machine's health, and video numbers typed in on the dashboard.
+ * The game's own statistics: anonymous play events from the page and
+ * samples of the machine's health.
  * It shares the game's SQLite file.
  */
 /** What a reading of the machine is measured against: the previous reading's counters. */
@@ -195,21 +184,6 @@ export class Metrics {
       throw e;
     }
     return kept;
-  }
-
-  // ---- video numbers ---------------------------------------------------------
-
-  /** Totals for one platform on one day, as shown in its own analytics. */
-  saveSocial(body: unknown): boolean {
-    const b = (body ?? {}) as Record<string, unknown>;
-    const day = typeof b.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.day) ? b.day : null;
-    const platform = (PLATFORMS as readonly unknown[]).includes(b.platform) ? (b.platform as Platform) : null;
-    const num = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : Number.isInteger(Number(v)) && Number(v) >= 0 ? Number(v) : 0);
-    if (!day || !platform) return false;
-    this.db
-      .prepare('INSERT OR REPLACE INTO social_stats (day, platform, views, likes, comments, followers) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(day, platform, num(b.views), num(b.likes), num(b.comments), num(b.followers));
-    return true;
   }
 
   // ---- the machine -------------------------------------------------------------
@@ -364,7 +338,6 @@ export class Metrics {
        FROM system_samples WHERE at >= ? ORDER BY at`,
       now - DAY_MS,
     );
-    const social = all('SELECT day, platform, views, likes, comments, followers FROM social_stats ORDER BY day DESC, platform LIMIT 300');
 
     return {
       at: now,
@@ -376,7 +349,6 @@ export class Metrics {
       modes,
       clicks,
       system: { now: this.liveNow().system, last24h: system },
-      social,
     };
   }
 }
