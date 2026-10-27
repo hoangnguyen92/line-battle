@@ -8,6 +8,7 @@ import {
   type PieceType,
 } from '@line-battle/engine';
 import type { CharacterView } from './character';
+import type { TapPreview } from './tap';
 import { t } from './i18n';
 import { drawCell, PIECE_COLORS, skinSheet, THEME_COLORS, type SkinSheet, type Theme } from './skins';
 
@@ -99,6 +100,8 @@ export class Renderer {
   private compact = false;
   /** CSS pixels per canvas unit. */
   private scale = 1;
+  /** Tap-to-place: where your piece will go, drawn instead of the ghost. */
+  private tapPreview: TapPreview | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -125,6 +128,25 @@ export class Renderer {
     if (bottom === this.reserved.bottom && sides === this.reserved.sides) return;
     this.reserved = { bottom, sides };
     this.resize();
+  }
+
+  setTapPreview(preview: TapPreview | null): void {
+    this.tapPreview = preview;
+  }
+
+  /**
+   * The cell of your board (x, y up from the bottom) under a screen point.
+   * Points a little outside the board snap to its edge; further out is null.
+   */
+  cellAt(clientX: number, clientY: number): [number, number] | null {
+    const r = this.canvas.getBoundingClientRect();
+    const ux = (clientX - r.left) / this.scale;
+    const uy = (clientY - r.top) / this.scale;
+    const col = Math.floor((ux - BOARD_X) / CELL);
+    if (col < -1 || col > BOARD_WIDTH) return null;
+    const row = VISIBLE_HEIGHT - 1 - Math.floor((uy - BOARD_Y) / CELL);
+    if (row < -2) return null;
+    return [Math.max(0, Math.min(BOARD_WIDTH - 1, col)), Math.max(0, Math.min(VISIBLE_HEIGHT - 1, row))];
   }
 
   /** How wide one cell of your board is on screen, in CSS pixels. */
@@ -162,7 +184,7 @@ export class Renderer {
     this.drawWell();
     if (!game) return;
     this.drawStack(game);
-    this.drawActive(game);
+    this.drawActive(game, true);
     this.drawHold(game);
     this.drawQueue(game);
     this.drawStats(game, hud);
@@ -184,7 +206,7 @@ export class Renderer {
       this.sheet = this.sheets[i];
       this.drawWell();
       this.drawStack(game);
-      this.drawActive(game);
+      this.drawActive(game, i === 0);
       this.drawGarbageMeter(game);
       this.drawHold(game);
       this.drawQueue(game);
@@ -217,7 +239,7 @@ export class Renderer {
     this.sheet = this.sheets[0];
     this.drawWell();
     this.drawStack(me);
-    this.drawActive(me);
+    this.drawActive(me, true);
     this.drawGarbageMeter(me);
     this.drawHold(me);
     this.drawQueue(me, COMPACT_QUEUE);
@@ -422,17 +444,37 @@ export class Renderer {
     }
   }
 
-  private drawActive(game: Game): void {
+  /** The falling piece and its ghost; on your own board a tap-to-place spot replaces the ghost. */
+  private drawActive(game: Game, mine = false): void {
     const ghost = game.ghost();
     const p = game.active;
     if (!p || !ghost) return;
+    const tap = mine ? this.tapPreview : null;
+    if (tap) this.drawTapPreview(tap);
     // The ghost keeps the standard look in every skin.
-    for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), PIECE_COLORS[p.type]);
+    else for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), PIECE_COLORS[p.type]);
     const c = this.ctx;
     c.save();
     c.shadowColor = PIECE_COLORS[p.type];
     c.shadowBlur = 14;
     for (const [x, y] of game.pieceCells(p)) this.drawBlock(...this.cellPos(x, y), CELL, CELL_ID[p.type]);
+    c.restore();
+  }
+
+  /** The picked spot: the piece half see-through, with a bright outline to tap again. */
+  private drawTapPreview(tap: TapPreview): void {
+    const c = this.ctx;
+    for (const [x, y] of tap.cells) this.drawBlock(...this.cellPos(x, y), CELL, CELL_ID[tap.type], 0.5);
+    c.save();
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = 2;
+    c.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 160);
+    for (const [x, y] of tap.cells) {
+      const [px, py] = this.cellPos(x, y);
+      c.beginPath();
+      c.roundRect(px + 2, py + 2, CELL - 4, CELL - 4, 5);
+      c.stroke();
+    }
     c.restore();
   }
 

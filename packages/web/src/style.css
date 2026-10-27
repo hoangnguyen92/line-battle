@@ -292,3 +292,4 @@ body.touch canvas { touch-action: none; }
 .swipe { position: absolute; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .swipe { z-index: 1; }
 .tip { z-index: 2; }
+.touchpad { z-index: 2; }

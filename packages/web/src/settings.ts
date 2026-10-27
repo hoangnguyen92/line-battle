@@ -145,9 +145,10 @@ export function saveTouchHandling(h: Handling): void {
 const TOUCH_STYLE_KEY = 'lineBattle.touchStyle';
 const SWIPE_SENSITIVITY_KEY = 'lineBattle.swipeSensitivity';
 
-/** Swipe unless the player picked the buttons. */
+/** Tap to place unless the player picked another style. */
 export function loadTouchStyle(): TouchStyle {
-  return read(TOUCH_STYLE_KEY) === 'buttons' ? 'buttons' : 'swipe';
+  const v = read(TOUCH_STYLE_KEY);
+  return v === 'buttons' || v === 'swipe' ? v : 'tap';
 }
 
 export function saveTouchStyle(style: TouchStyle): void {

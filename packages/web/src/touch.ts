@@ -55,10 +55,21 @@ const SWIPE_LABELS: Record<Key, string> = {
   hold: 'flick up',
 };
 
-/** Which controls text about keys should describe. */
-let labelStyle: 'swipe' | 'buttons' = 'swipe';
+const TAP_LABELS: Record<Key, string> = {
+  left: 'tapping a spot',
+  right: 'tapping a spot',
+  softDrop: '⤓',
+  hardDrop: '⤓',
+  rotateCW: '↻',
+  rotateCCW: '↺',
+  rotate180: '↻↻',
+  hold: 'HOLD',
+};
 
-export function setLabelStyle(style: 'swipe' | 'buttons'): void {
+/** Which controls text about keys should describe. */
+let labelStyle: TouchStyle = 'swipe';
+
+export function setLabelStyle(style: TouchStyle): void {
   labelStyle = style;
 }
 
@@ -66,7 +77,9 @@ export function setLabelStyle(style: 'swipe' | 'buttons'): void {
 export function touchLabel(code: string): string | undefined {
   const spec = [...LEFT, ...RIGHT].find((s) => touchCode(s.key) === code);
   if (!spec) return undefined;
-  return labelStyle === 'swipe' ? t(SWIPE_LABELS[spec.key]) : spec.icon;
+  if (labelStyle === 'swipe') return t(SWIPE_LABELS[spec.key]);
+  if (labelStyle === 'tap') return t(TAP_LABELS[spec.key]);
+  return spec.icon;
 }
 
 /** A key map of the touch buttons alone, so text about keys names the buttons instead. */
@@ -182,7 +195,8 @@ export class TouchPad {
   }
 }
 
-export type TouchStyle = 'swipe' | 'buttons';
+/** 'tap': tap where the piece should go (see tap.ts). */
+export type TouchStyle = 'tap' | 'swipe' | 'buttons';
 
 /** Below this a finger hasn't really moved: a tap, not a drag. */
 const TAP_SLOP_PX = 12;

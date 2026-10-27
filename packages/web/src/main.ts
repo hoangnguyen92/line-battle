@@ -57,7 +57,8 @@ import { drawCell, skinSheet, THEME_COLORS } from './skins';
 import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
-import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
+import { TapControls } from './tap';
+import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchCode, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
   loadBestTicks,
@@ -206,17 +207,20 @@ function refreshTouchPad(): void {
   const on = touchActive() && inGameScreen(screen) && mode !== 'versus';
   swipe.setVisible(on && touchStyle === 'swipe');
   touchPad.setVisible(on && touchStyle === 'buttons');
+  tap.setVisible(on && touchStyle === 'tap');
+  if (!tap.visible) renderer.setTapPreview(null);
   $('touch-back').classList.toggle('hidden', !on);
   const app = $('app');
-  if (!touchPad.visible) {
+  const bar = touchPad.visible ? touchPad.root : tap.visible ? tap.bar : null;
+  if (!bar) {
     app.style.paddingBottom = '';
     return renderer.setReserved(0, 0);
   }
   const side = isLandscape();
-  touchPad.root.classList.toggle('sides', side);
-  const clusters = Array.from(touchPad.root.children) as HTMLElement[];
+  bar.classList.toggle('sides', side);
+  const clusters = Array.from(bar.children) as HTMLElement[];
   const sides = side ? Math.max(...clusters.map((c) => c.offsetWidth)) + 16 : 0;
-  const bottom = side ? 0 : touchPad.root.offsetHeight;
+  const bottom = side ? 0 : bar.offsetHeight;
   app.style.paddingBottom = `${bottom}px`;
   renderer.setReserved(bottom, sides);
 }
@@ -315,7 +319,7 @@ function refreshTutorialTip(done = false): void {
   if (!tutorial) return;
   $('tutorial-step').textContent = tutorial.finished ? t('All done') : t('Step {n} of {total}', { n: tutorial.lesson + 1, total: tutorial.count });
   $('tutorial-title').textContent = tutorial.title();
-  $('tutorial-text').textContent = touchActive() ? tutorial.text(touchKeyMap(), touchStyle === 'swipe') : tutorial.text(prefs.keys);
+  $('tutorial-text').textContent = touchActive() ? tutorial.text(touchKeyMap(), touchStyle === 'buttons' ? undefined : touchStyle) : tutorial.text(prefs.keys);
   $('tutorial-end').classList.toggle('hidden', !tutorial.finished);
   $('tutorial-skip').classList.toggle('hidden', tutorial.finished);
   const tip = $('tutorial-tip');
@@ -784,6 +788,10 @@ function frame(now: number): void {
     swipe.cellPx = renderer.cellPx * (100 / swipeSensitivity);
     swipe.flush(!!myGame()?.active);
   }
+  if (tap.visible) {
+    tap.update(myGame());
+    renderer.setTapPreview(tap.shown);
+  }
   if (mode === 'online' && online) {
     const m = online;
     m.update(now, () => {
@@ -920,6 +928,16 @@ const swipe = new SwipeControls(
   },
   (code) => soloKeys.keyUp(code),
 );
+const tap = new TapControls(
+  $('app'),
+  (x, y) => renderer.cellAt(x, y),
+  (key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(touchCode(key));
+    soloKeys.keyUp(touchCode(key));
+  },
+);
 $('touch-back').addEventListener('click', back);
 addEventListener('resize', refreshTouchPad);
 
@@ -1033,9 +1051,11 @@ function syncSettingsForm(): void {
   $('swipe-field').classList.toggle('hidden', !touchActive() || touchStyle !== 'swipe');
   $('touch-style-help').textContent = touchStyle === 'swipe'
     ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
-    : '';
+    : touchStyle === 'tap'
+      ? t('Tap: tap where the piece should go, then tap it again to drop it there. ↻ and ↺ turn it.')
+      : '';
   // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
-  const swiping = touchActive() && touchStyle === 'swipe';
+  const swiping = touchActive() && touchStyle !== 'buttons';
   $('das-field').classList.toggle('hidden', swiping);
   $('arr-field').classList.toggle('hidden', swiping);
   swipeInput.value = String(swipeSensitivity);
@@ -1064,8 +1084,8 @@ for (const option of ['auto', 'on', 'off'] as const) {
   $('touch-mode').append(b);
 }
 
-const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { swipe: 'Swipe', buttons: 'Buttons' };
-for (const style of ['swipe', 'buttons'] as const) {
+const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { tap: 'Tap', swipe: 'Swipe', buttons: 'Buttons' };
+for (const style of ['tap', 'swipe', 'buttons'] as const) {
   const b = document.createElement('button');
   b.dataset.style = style;
   b.textContent = t(TOUCH_STYLE_NAMES[style]);

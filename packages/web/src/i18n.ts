@@ -134,6 +134,12 @@ const VI: Record<string, string> = {
   'These settings are for the keyboard.': 'Đây là cài đặt cho bàn phím.',
   'Style': 'Kiểu',
   'Swipe': 'Vuốt',
+  'Tap': 'Chạm',
+  'Tap: tap where the piece should go, then tap it again to drop it there. ↻ and ↺ turn it.': 'Chạm: chạm vào chỗ muốn đặt khối, rồi chạm lần nữa để thả xuống. ↻ và ↺ để xoay.',
+  'tapping a spot': 'chạm vào chỗ muốn đặt',
+  'Tap the board where you want the piece, then tap the bright outline again to drop it there. Put one on the left and one on the right.': 'Chạm vào bảng ở chỗ muốn đặt khối, rồi chạm lại vào viền sáng để thả xuống. Hãy đặt một khối bên trái và một khối bên phải.',
+  'Turn the outline with ↻ and ↺, then drop the piece. Try both directions.': 'Xoay viền sáng bằng ↻ và ↺, rồi thả khối. Thử cả hai chiều.',
+  'Tap the outline again, or press ⤓, to drop the piece.': 'Chạm lại vào viền sáng, hoặc bấm ⤓, để thả khối.',
   'Buttons': 'Nút bấm',
   'Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.':
     'Vuốt: kéo ngang để di chuyển, chạm để xoay (bên phải xoay theo chiều kim đồng hồ), kéo xuống để rơi nhanh, vuốt nhanh xuống để thả, vuốt lên để giữ.',
