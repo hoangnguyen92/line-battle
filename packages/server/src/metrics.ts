@@ -1,7 +1,7 @@
 import { cpus, freemem, loadavg, totalmem, uptime } from 'node:os';
 import { readFileSync, statfsSync, statSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 import { playersInMatches } from './capacity';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -11,7 +11,7 @@ const SYSTEM_KEEP_MS = 14 * DAY_MS;
 /** Raw play events older than this are dropped; the dashboard looks back 30 days. */
 const EVENTS_KEEP_MS = 120 * DAY_MS;
 /** A visitor whose page sent anything this recently counts as online now. */
-const ONLINE_MS = 2 * 60 * 1000;
+const ONLINE_MS = 75 * 1000;
 
 export const EVENT_NAMES = ['visit', 'click', 'play', 'game-finished', 'game-quit', 'game-left', 'time', 'signup'] as const;
 export const PLATFORMS = ['youtube', 'tiktok', 'facebook'] as const;
@@ -124,11 +124,22 @@ function cpuTimes(): { idle: number; total: number } {
  * of the machine's health, and video numbers typed in on the dashboard.
  * It shares the game's SQLite file.
  */
+/** What a reading of the machine is measured against: the previous reading's counters. */
+interface Probe {
+  cpu: { idle: number; total: number };
+  net: { rx: number; tx: number; at: number };
+  lag: IntervalHistogram;
+  last: SystemNow | null;
+}
+
+function newProbe(): Probe {
+  return { cpu: cpuTimes(), net: { ...netTotals(), at: Date.now() }, lag: monitorEventLoopDelay({ resolution: 20 }), last: null };
+}
+
 export class Metrics {
-  private lastCpu = cpuTimes();
-  private lastNet = { ...netTotals(), at: Date.now() };
-  private latest: SystemNow | null = null;
-  private lag = monitorEventLoopDelay({ resolution: 20 });
+  /** The per-minute samples that are saved, and the live readings the dashboard polls. */
+  private stored = newProbe();
+  private live = newProbe();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -141,7 +152,8 @@ export class Metrics {
 
   /** Samples the machine every minute (and trims old data once an hour). */
   start(): void {
-    this.lag.enable();
+    this.stored.lag.enable();
+    this.live.lag.enable();
     let n = 0;
     this.sample();
     this.timer = setInterval(() => {
@@ -153,7 +165,8 @@ export class Metrics {
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
-    this.lag.disable();
+    this.stored.lag.disable();
+    this.live.lag.disable();
   }
 
   // ---- events from the page ------------------------------------------------
@@ -201,17 +214,39 @@ export class Metrics {
 
   // ---- the machine -------------------------------------------------------------
 
+  /** Takes a per-minute sample and saves it. */
   sample(): SystemNow {
+    const s = this.measure(this.stored);
+    this.db
+      .prepare(
+        'INSERT OR REPLACE INTO system_samples (at, cpu, mem_used, mem_total, disk_used, disk_total, load1, lag_ms, rss, net_rx, net_tx, playing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(this.now(), s.cpu, s.memUsed, s.memTotal, s.diskUsed, s.diskTotal, s.load[0], s.lagMs, s.rss, s.netRx, s.netTx, s.playing);
+    return s;
+  }
+
+  /** The machine right now, for the dashboard's live view; at most one reading a second. */
+  liveNow(): { at: number; onlineNow: number; system: SystemNow } {
+    const now = this.now();
+    const fresh = this.live.last && now - this.live.net.at < 1000 ? this.live.last : this.measure(this.live);
+    return { at: now, onlineNow: this.onlineNow(), system: fresh };
+  }
+
+  private onlineNow(): number {
+    return (this.db.prepare('SELECT count(DISTINCT visitor) n FROM events WHERE at >= ?').get(this.now() - ONLINE_MS) as { n: number }).n;
+  }
+
+  private measure(probe: Probe): SystemNow {
     const now = this.now();
     const cpu = cpuTimes();
-    const dTotal = cpu.total - this.lastCpu.total;
-    const busy = dTotal > 0 ? 1 - (cpu.idle - this.lastCpu.idle) / dTotal : 0;
-    this.lastCpu = cpu;
+    const dTotal = cpu.total - probe.cpu.total;
+    const busy = dTotal > 0 ? 1 - (cpu.idle - probe.cpu.idle) / dTotal : 0;
+    probe.cpu = cpu;
     const net = netTotals();
-    const secs = Math.max(1, (now - this.lastNet.at) / 1000);
-    const netRx = Math.max(0, (net.rx - this.lastNet.rx) / secs);
-    const netTx = Math.max(0, (net.tx - this.lastNet.tx) / secs);
-    this.lastNet = { ...net, at: now };
+    const secs = Math.max(0.5, (now - probe.net.at) / 1000);
+    const netRx = Math.max(0, (net.rx - probe.net.rx) / secs);
+    const netTx = Math.max(0, (net.tx - probe.net.tx) / secs);
+    probe.net = { ...net, at: now };
     let diskUsed = 0;
     let diskTotal = 0;
     try {
@@ -227,8 +262,8 @@ export class Metrics {
     } catch {
       /* not created yet */
     }
-    const lagMs = this.lag.percentile(99) / 1e6;
-    this.lag.reset();
+    const lagMs = probe.lag.count > 0 ? probe.lag.percentile(99) / 1e6 : 0;
+    probe.lag.reset();
     const s: SystemNow = {
       cpu: Math.round(busy * 1000) / 10,
       memUsed: totalmem() - freemem(),
@@ -246,12 +281,7 @@ export class Metrics {
       uptimeServer: Math.round(process.uptime()),
       dbBytes,
     };
-    this.latest = s;
-    this.db
-      .prepare(
-        'INSERT OR REPLACE INTO system_samples (at, cpu, mem_used, mem_total, disk_used, disk_total, load1, lag_ms, rss, net_rx, net_tx, playing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(now, s.cpu, s.memUsed, s.memTotal, s.diskUsed, s.diskTotal, s.load[0], s.lagMs, s.rss, s.netRx, s.netTx, s.playing);
+    probe.last = s;
     return s;
   }
 
@@ -322,7 +352,7 @@ export class Metrics {
        SELECT round(avg(s)) avg, (SELECT s FROM t ORDER BY s LIMIT 1 OFFSET (SELECT count(*) / 2 FROM t)) median FROM t`,
       since7,
     );
-    const onlineNow = get<{ n: number }>('SELECT count(DISTINCT visitor) n FROM events WHERE at >= ?', now - ONLINE_MS).n;
+    const onlineNow = this.onlineNow();
     const totals = {
       visitors: get<{ n: number }>('SELECT count(*) n FROM visitors').n,
       accounts: get<{ n: number }>('SELECT count(*) n FROM users').n,
@@ -345,7 +375,7 @@ export class Metrics {
       sources,
       modes,
       clicks,
-      system: { now: this.latest ?? this.sample(), last24h: system },
+      system: { now: this.liveNow().system, last24h: system },
       social,
     };
   }

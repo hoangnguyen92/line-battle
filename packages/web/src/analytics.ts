@@ -8,9 +8,11 @@ import { API_BASE } from './account';
  */
 
 const VISITOR_KEY = 'lineBattle.visitor';
-const FLUSH_MS = 20_000;
-/** Time on the page is sent at most this often while the tab stays open. */
-const TIME_FLUSH_MS = 60_000;
+const FLUSH_MS = 10_000;
+/** Time on the page is sent this often while the tab is open, so the dashboard sees who is online. */
+const TIME_FLUSH_MS = 30_000;
+/** Events the dashboard shows live go out within this long. */
+const SOON_MS = 1_000;
 
 interface TrackedEvent {
   e: string;
@@ -72,6 +74,7 @@ export class Analytics {
   private visibleSince: number | null = document.visibilityState === 'visible' ? performance.now() : null;
   private visibleMs = 0;
   private lastTimeFlush = performance.now();
+  private soon: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.track('visit', visitSource(location.href, document.referrer));
@@ -105,6 +108,12 @@ export class Analytics {
   track(e: string, d?: string, n?: number): void {
     if (this.queue.length >= 200) return;
     this.queue.push({ e, ...(d === undefined ? {} : { d }), ...(n === undefined ? {} : { n: Math.round(n) }) });
+    if (e !== 'click' && e !== 'time' && !this.soon) {
+      this.soon = setTimeout(() => {
+        this.soon = null;
+        this.flush(false);
+      }, SOON_MS);
+    }
   }
 
   /** A game began (or a new one replaced the last). `label` says what is played, e.g. "bot-3". */
