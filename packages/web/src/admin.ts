@@ -358,6 +358,10 @@ async function load(): Promise<void> {
       showLogin((e as Error).message);
     } else if (status === 404) {
       showLogin('Dashboard đang tắt: đặt ADMIN_KEY trong .env của server rồi deploy lại.');
+    } else if ($('dash').classList.contains('hidden')) {
+      // Nothing on screen yet: show the form with the reason instead of a blank page.
+      showLogin(`Không tải được: ${(e as Error).message}. Bấm Mở để thử lại.`);
+      $<HTMLInputElement>('key').value = key;
     } else {
       $('updated').textContent = `Không tải được: ${(e as Error).message}`;
     }
