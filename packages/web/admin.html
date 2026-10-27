@@ -25,8 +25,10 @@
 
     <main id="dash" class="hidden">
       <section>
-        <h2>Ngay lúc này</h2>
+        <h2>Ngay lúc này <span class="muted">(cập nhật mỗi 3 giây, <span id="live-time"></span>)</span></h2>
         <div id="now" class="tiles"></div>
+        <h2>Trực tiếp <span class="muted">(5 phút gần nhất)</span></h2>
+        <div id="live" class="charts"></div>
       </section>
 
       <section>
@@ -54,27 +56,6 @@
       <section>
         <h2>Bấm vào đâu <span class="muted">(7 ngày)</span></h2>
         <div class="card"><div class="scroll"><table id="clicks"></table></div></div>
-      </section>
-
-      <section>
-        <h2>Video</h2>
-        <form id="social-form" class="card social-form">
-          <label>Ngày <input name="day" type="date" required /></label>
-          <label>Nền tảng
-            <select name="platform">
-              <option value="youtube">YouTube</option>
-              <option value="tiktok">TikTok</option>
-              <option value="facebook">Facebook</option>
-            </select>
-          </label>
-          <label>Tổng view <input name="views" type="number" min="0" value="0" /></label>
-          <label>Like <input name="likes" type="number" min="0" value="0" /></label>
-          <label>Comment <input name="comments" type="number" min="0" value="0" /></label>
-          <label>Follower <input name="followers" type="number" min="0" value="0" /></label>
-          <button type="submit">Lưu</button>
-          <p class="muted hint">Nhập số tổng của cả kênh mỗi ngày (lấy trong YouTube Studio, TikTok Studio, Meta Business). Bảng bên dưới tự tính phần tăng thêm.</p>
-        </form>
-        <div class="card"><div class="scroll"><table id="social"></table></div></div>
       </section>
     </main>
     <script type="module" src="/src/admin.ts"></script>

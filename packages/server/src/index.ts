@@ -6,4 +6,4 @@ export * from './glicko';
 export * from './referee';
 export { setStore, getStore } from './services';
 export { Store, publicRating, SETTLED_RD, type MatchRecord, type User } from './store';
-export { Metrics, vnDay, EVENT_NAMES, PLATFORMS } from './metrics';
+export { Metrics, vnDay, EVENT_NAMES } from './metrics';

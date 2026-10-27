@@ -75,18 +75,18 @@ describe('metrics', () => {
     expect((ok.body as any).sources[0].source).toBe('youtube');
   });
 
+  it('live readings show who has the game open and the machine now', async () => {
+    metrics.record(V1, [{ e: 'visit', d: 'facebook' }]);
+    const live = await api.handle(req('GET', '/api/admin/live', null, 'secret-key'));
+    expect(live.status).toBe(200);
+    expect(live.body).toMatchObject({ onlineNow: 1, system: { memTotal: expect.any(Number) } });
+    expect((await api.handle(req('GET', '/api/admin/live'))).status).toBe(401);
+    now += 2 * 60 * 1000;
+    expect(metrics.liveNow().onlineNow).toBe(0);
+  });
+
   it('without a key the dashboard does not exist', async () => {
     const closed = new Api(store, () => now, [], metrics, null);
     expect((await closed.handle(req('GET', '/api/admin/dashboard', null, 'anything'))).status).toBe(404);
-  });
-
-  it('saves video numbers per day and platform, replacing the same day', async () => {
-    const save = (body: unknown) => api.handle(req('POST', '/api/admin/social', body, 'secret-key'));
-    expect((await save({ day: '2026-10-27', platform: 'facebook', views: 258 })).status).toBe(200);
-    expect((await save({ day: '2026-10-27', platform: 'facebook', views: 300, likes: 2 })).status).toBe(200);
-    expect((await save({ day: 'today', platform: 'facebook' })).status).toBe(400);
-    expect((await save({ day: '2026-10-27', platform: 'myspace' })).status).toBe(400);
-    const d = metrics.dashboard() as any;
-    expect(d.social).toEqual([{ day: '2026-10-27', platform: 'facebook', views: 300, likes: 2, comments: 0, followers: 0 }]);
   });
 });

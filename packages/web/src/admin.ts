@@ -1,8 +1,12 @@
-// The owner's dashboard: play statistics, the server's health and video
-// numbers, from /api/admin/dashboard. The key is ADMIN_KEY on the server.
+// The owner's dashboard: play statistics and the server's health, from
+// /api/admin/dashboard. The key is ADMIN_KEY on the server.
 
 const KEY_STORE = 'lineBattle.adminKey';
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 30_000;
+/** The "right now" tiles and live charts update this often. */
+const LIVE_MS = 3_000;
+/** Live readings kept for the live charts: 5 minutes. */
+const LIVE_POINTS = 100;
 
 interface SystemSample {
   at: number;
@@ -35,7 +39,6 @@ interface Dashboard {
     };
     last24h: SystemSample[];
   };
-  social: { day: string; platform: string; views: number; likes: number; comments: number; followers: number }[];
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -185,12 +188,14 @@ function chart(title: string, now: string, points: number[], max: number | null,
   return box;
 }
 
-function render(d: Dashboard): void {
-  const s = d.system.now;
+type SystemNow = Dashboard['system']['now'];
+const liveHistory: SystemNow[] = [];
+
+function renderNow(s: SystemNow, onlineNow: number, at: number): void {
   const memShare = s.memUsed / s.memTotal;
   const diskShare = s.diskTotal ? s.diskUsed / s.diskTotal : 0;
   $('now').replaceChildren(
-    tile('Đang mở game', fmt(d.onlineNow), 'người, 2 phút qua'),
+    tile('Đang mở game', fmt(onlineNow), 'người, trong 1 phút qua'),
     tile('Đang đấu online', fmt(s.playing), 'người trong trận'),
     tile('CPU', `${s.cpu}%`, `${s.cores} nhân, load ${s.load.join(' / ')}`, tone(s.cpu / 100)),
     tile('RAM', pct(s.memUsed, s.memTotal), `${bytes(s.memUsed)} / ${bytes(s.memTotal)}`, tone(memShare, 0.8, 0.92)),
@@ -200,6 +205,21 @@ function render(d: Dashboard): void {
     tile('Server game', bytes(s.rss), `RAM; chạy ${duration(s.uptimeServer)}`),
     tile('Database', bytes(s.dbBytes), `máy chạy ${duration(s.uptimeHost)}`),
   );
+  liveHistory.push(s);
+  if (liveHistory.length > LIVE_POINTS) liveHistory.shift();
+  const h = liveHistory;
+  $('live').replaceChildren(
+    chart('CPU %', `${s.cpu}%`, h.map((x) => x.cpu), 100, '#7c6cf0'),
+    chart('RAM %', pct(s.memUsed, s.memTotal), h.map((x) => (x.memUsed / x.memTotal) * 100), 100, '#3ccf8e'),
+    chart('Người đấu online', fmt(s.playing), h.map((x) => x.playing), null, '#f5c043'),
+    chart('Mạng ra (KB/s)', `${bytes(s.netTx)}/s`, h.map((x) => x.netTx / 1024), null, '#5bb8f0'),
+  );
+  $('live-time').textContent = new Date(at).toLocaleTimeString('vi-VN');
+}
+
+function render(d: Dashboard): void {
+  const s = d.system.now;
+  renderNow(s, d.onlineNow, d.at);
 
   const h = d.system.last24h;
   $('charts').replaceChildren(
@@ -270,20 +290,6 @@ function render(d: Dashboard): void {
     ]),
   );
 
-  // Totals per platform per day, with the change since that platform's previous entry.
-  const prev = new Map<string, (typeof d.social)[number]>();
-  const rows = [...d.social].reverse().map((r) => {
-    const p = prev.get(r.platform);
-    prev.set(r.platform, r);
-    const delta = (k: 'views' | 'likes' | 'comments' | 'followers') => {
-      const span = el('span', fmt(r[k]));
-      if (p && r[k] > p[k]) span.append(' ', el('span', `+${fmt(r[k] - p[k])}`, 'up'));
-      return span;
-    };
-    return [r.day.split('-').reverse().join('/'), { youtube: 'YouTube', tiktok: 'TikTok', facebook: 'Facebook' }[r.platform] ?? r.platform, delta('views'), delta('likes'), delta('comments'), delta('followers')];
-  });
-  table($('social'), ['Ngày', 'Nền tảng', 'View', 'Like', 'Comment', 'Follower'], rows.reverse(), 'Chưa nhập số video nào');
-
   $('updated').textContent = `Cập nhật ${new Date(d.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
@@ -327,6 +333,16 @@ function showLogin(message = ''): void {
   $<HTMLInputElement>('key').focus();
 }
 
+async function loadLive(): Promise<void> {
+  if (!key || $('dash').classList.contains('hidden')) return;
+  try {
+    const live = await call<{ at: number; onlineNow: number; system: SystemNow }>('GET', '/api/admin/live');
+    renderNow(live.system, live.onlineNow, live.at);
+  } catch {
+    /* the full refresh reports problems */
+  }
+}
+
 async function load(): Promise<void> {
   if (!key) return showLogin();
   try {
@@ -361,31 +377,10 @@ $('logout').addEventListener('click', () => {
 });
 $('refresh').addEventListener('click', () => void load());
 
-const form = $<HTMLFormElement>('social-form');
-(form.elements.namedItem('day') as HTMLInputElement).valueAsDate = new Date();
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const field = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
-  const button = form.querySelector('button')!;
-  button.disabled = true;
-  try {
-    await call('POST', '/api/admin/social', {
-      day: field('day'),
-      platform: field('platform'),
-      views: Number(field('views')),
-      likes: Number(field('likes')),
-      comments: Number(field('comments')),
-      followers: Number(field('followers')),
-    });
-    await load();
-  } catch (err) {
-    alert((err as Error).message);
-  } finally {
-    button.disabled = false;
-  }
-});
-
 void load();
 setInterval(() => {
   if (key && document.visibilityState === 'visible') void load();
 }, REFRESH_MS);
+setInterval(() => {
+  if (document.visibilityState === 'visible') void loadLive();
+}, LIVE_MS);
