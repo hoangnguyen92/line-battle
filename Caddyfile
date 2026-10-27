@@ -16,6 +16,13 @@
 	reverse_proxy @game server:2567
 	reverse_proxy @websocket server:2567
 
+	# admin.linebattle.net opens the stats dashboard (it must be in SITE_ADDRESS too).
+	@adminHome {
+		host admin.linebattle.net
+		path /
+	}
+	rewrite @adminHome /admin.html
+
 	root * /srv
 	file_server
 }

@@ -32,3 +32,14 @@ browser remembers it.
 
 For links you share, add a tag so the dashboard can tell them apart, e.g.
 `https://linebattle.net/?ref=tiktok-bio` or `?ref=voz`.
+
+## admin.linebattle.net
+
+Caddy serves the dashboard at the root of `admin.linebattle.net`. To turn it on:
+
+1. Cloudflare DNS: add an `A` record `admin` pointing at the same address as
+   `linebattle.net`, **DNS only** (grey cloud), like the others, so Caddy can
+   get its certificate.
+2. On the server, add it to `SITE_ADDRESS` in `~/line-battle/.env`, e.g.
+   `SITE_ADDRESS=linebattle.net, www.linebattle.net, admin.linebattle.net`,
+   then `docker compose up -d`.
