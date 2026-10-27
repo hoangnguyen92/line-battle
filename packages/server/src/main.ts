@@ -2,6 +2,7 @@ import { createEndpoint, createRouter, defineRoom, defineServer } from '@colyseu
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { BATTLE_ROOM, QUEUE_ROOM } from '@line-battle/engine';
 import { Api, apiEndpoint } from './api';
+import { Metrics } from './metrics';
 import { BattleRoom } from './BattleRoom';
 import { QueueRoom } from './QueueRoom';
 import { setStore } from './services';
@@ -22,6 +23,13 @@ const stripe = stripeConfigFromEnv(process.env);
 const payments = stripe ? [new StripePayments(stripe, store)] : [];
 console.log(stripe ? `Card payments on (Stripe ${stripe.secretKey.startsWith('sk_live') ? 'live' : 'test'} mode)` : 'Card payments off');
 
+/** Play statistics and the machine's health, for the dashboard at /admin.html. */
+const metrics = new Metrics(store.db, dbPath);
+metrics.start();
+/** The dashboard's password; with none set the dashboard is off. */
+const adminKey = process.env.ADMIN_KEY?.trim() || null;
+console.log(adminKey ? 'Dashboard on' : 'Dashboard off (set ADMIN_KEY to turn it on)');
+
 const server = defineServer({
   rooms: {
     [BATTLE_ROOM]: defineRoom(BattleRoom),
@@ -30,7 +38,7 @@ const server = defineServer({
   routes: createRouter({
     // For Docker and load balancer health checks.
     health: createEndpoint('/health', { method: 'GET' }, async () => 'ok'),
-    api: apiEndpoint(new Api(store, Date.now, payments)),
+    api: apiEndpoint(new Api(store, Date.now, payments, metrics, adminKey)),
   }),
   transport: new WebSocketTransport(),
   greet: false,
@@ -40,4 +48,7 @@ await server.listen(port, host);
 console.log(`Line Battle match server listening on ${host}:${port}, data in ${dbPath}`);
 
 // Colyseus shuts down gracefully on SIGTERM and then exits; the database closes last.
-process.once('exit', () => store.close());
+process.once('exit', () => {
+  metrics.stop();
+  store.close();
+});

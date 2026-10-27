@@ -16,6 +16,8 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       SITE_URL: ${SITE_URL:-}
+      # Password for the stats dashboard at /admin.html; the dashboard is off without it.
+      ADMIN_KEY: ${ADMIN_KEY:-}
 
   web:
     build: { context: ., target: web }

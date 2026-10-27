@@ -46,6 +46,7 @@ import {
   type ShopItem,
 } from '@line-battle/engine';
 import { Account, ApiError } from './account';
+import { Analytics } from './analytics';
 import { BOT_HANDLING, BotController, LEVEL_IDS, LEVELS, type LevelId } from '@line-battle/bot';
 import { BotWorker } from './bot-client';
 import { characterUrl, preloadArt } from './art';
@@ -146,12 +147,25 @@ let tutorial: Tutorial | null = null;
 // Online state
 let online: OnlineMatch | null = null;
 let pendingOnlineStart: KeyEvent[] = [];
+/** What kind of online game was joined, for the statistics. */
+let onlineKind = 'quick';
 const account = new Account();
+const analytics = new Analytics();
 let region: Region = loadRegion();
 
 // ---- screens --------------------------------------------------------------
 
+/** What is being played, as the statistics name it, e.g. "bot-3" or "online-ranked". */
+function gameLabel(): string {
+  if (mode === 'bot' && bot) return `${gauntlet ? 'gauntlet' : 'bot'}-${bot.level.id}`;
+  if (mode === 'online') return `online-${onlineKind}`;
+  return mode;
+}
+
 function show(next: Screen): void {
+  if (inGameScreen(next)) analytics.startGame(gameLabel());
+  else if (next === 'result') analytics.endGame('finished');
+  else if (next !== 'lobby') analytics.endGame('quit');
   screen = next;
   $('menu').classList.toggle('hidden', next !== 'menu');
   $('settings').classList.toggle('hidden', next !== 'settings');
@@ -450,6 +464,7 @@ function lobby(title: string, detail = '', code: string | null = null, cancel = 
 
 function startOnline(how: JoinKind): void {
   leaveOnline();
+  onlineKind = how.kind === 'create' || how.kind === 'join' ? 'room' : how.kind;
   setMode('online');
   match = null;
   bot = null;
@@ -1021,7 +1036,10 @@ async function submitAccount(kind: 'login' | 'signup'): Promise<void> {
   buttons.forEach((b) => (b.disabled = true));
   error.textContent = '';
   try {
-    if (kind === 'signup') await account.signUp(name, password, region, handling, prefs);
+    if (kind === 'signup') {
+      await account.signUp(name, password, region, handling, prefs);
+      analytics.track('signup');
+    }
     else await account.logIn(name, password);
     adoptAccountSettings();
     $<HTMLInputElement>('account-password').value = '';
