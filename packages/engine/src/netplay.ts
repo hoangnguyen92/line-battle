@@ -172,6 +172,8 @@ export interface ServerMessages {
     handling: [Handling, Handling];
     /** Each player's character and block skin. */
     looks: [Look, Look];
+    /** Which players use touch buttons (on a phone or tablet). Older servers leave it out. */
+    touch?: [boolean, boolean];
     roundsToWin: number;
     score: [number, number];
     /** 'ranked' and 'quick' matches come from the queue; 'private' from a room code. */
@@ -213,6 +215,8 @@ export interface JoinOptions {
   name: string;
   handling: Handling;
   look: Look;
+  /** Playing with on-screen touch buttons. */
+  touch?: boolean;
 }
 
 /** Rooms are named this on the server. */

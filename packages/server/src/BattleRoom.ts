@@ -53,6 +53,7 @@ interface Seat {
   name: string;
   handling: Handling;
   look: Look;
+  touch: boolean;
   connected: boolean;
   wantsRematch: boolean;
 }
@@ -133,7 +134,7 @@ export class BattleRoom extends Room {
     releaseSlots(n);
   }
 
-  onJoin(client: Client, options: { name?: unknown; handling?: unknown; look?: unknown } = {}): void {
+  onJoin(client: Client, options: { name?: unknown; handling?: unknown; look?: unknown; touch?: unknown } = {}): void {
     const user = (client.auth as SeatAuth | undefined)?.user ?? null;
     this.seats.push({
       sessionId: client.sessionId,
@@ -142,6 +143,7 @@ export class BattleRoom extends Room {
       name: user ? user.name : cleanName(options.name),
       handling: sanitizeHandling(options.handling),
       look: usableLook(sanitizeLook(options.look), user?.owned ?? []),
+      touch: options.touch === true,
       connected: true,
       wantsRematch: false,
     });
@@ -347,6 +349,7 @@ export class BattleRoom extends Room {
       names: [a.name, b.name],
       handling: [a.handling, b.handling],
       looks: [a.look, b.look],
+      touch: [a.touch, b.touch],
       roundsToWin: ROUNDS_TO_WIN,
       score: [...this.score],
       mode: this.mode,

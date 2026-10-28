@@ -58,6 +58,8 @@ import { drawCell, skinSheet, THEME_COLORS } from './skins';
 import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
+import { TapControls } from './tap';
+import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchCode, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
   loadBestTicks,
@@ -67,6 +69,10 @@ import {
   loadName,
   loadPrefs,
   loadRegion,
+  loadTouchHandling,
+  loadTouchMode,
+  loadTouchStyle,
+  loadSwipeSensitivity,
   saveBestTicks,
   saveBotLevel,
   saveGauntletBest,
@@ -74,6 +80,11 @@ import {
   saveName,
   savePrefs,
   saveRegion,
+  saveTouchHandling,
+  saveTouchMode,
+  saveTouchStyle,
+  saveSwipeSensitivity,
+  TOUCH_HANDLING,
 } from './settings';
 
 const SPRINT_LINES = 40;
@@ -110,6 +121,12 @@ const allKeyboards = [soloKeys, ...versusKeys];
 let mode: Mode = 'sprint';
 let screen: Screen = 'menu';
 let handling = loadHandling();
+/** Touch buttons get their own handling: a thumb is slower than a finger on a key. */
+let touchHandling = loadTouchHandling();
+let touchMode: TouchMode = loadTouchMode();
+let touchStyle: TouchStyle = loadTouchStyle();
+let swipeSensitivity = loadSwipeSensitivity();
+setLabelStyle(touchStyle);
 let countdownStart = 0;
 /** The countdown number last shown, so each one beeps once. */
 let lastCountdownStep = -1;
@@ -180,12 +197,53 @@ function show(next: Screen): void {
   $('download-replay').classList.toggle('hidden', mode === 'online' ? !online?.matchId : !lastReplay);
   if (mode !== 'online') $('result-rating').classList.add('hidden');
   if (mode !== 'online') $<HTMLButtonElement>('retry').disabled = false;
+  refreshTouchPad();
   if (next === 'menu') {
     refreshBest();
     refreshControlsTable();
     // New players see the tutorial first.
     $('start-tutorial').classList.toggle('primary', !prefs.tutorialDone);
   }
+}
+
+/** Whether this player uses the on-screen buttons. */
+function touchActive(): boolean {
+  return touchMode === 'on' || (touchMode === 'auto' && isTouchDevice());
+}
+
+/** The handling for how this player plays right now. */
+function activeHandling(): typeof handling {
+  return touchActive() ? touchHandling : handling;
+}
+
+/** Shows the touch controls while playing (not in two-player local versus); buttons get room of their own. */
+function refreshTouchPad(): void {
+  const on = touchActive() && inGameScreen(screen) && mode !== 'versus';
+  swipe.setVisible(on && touchStyle === 'swipe');
+  touchPad.setVisible(on && touchStyle === 'buttons');
+  tap.setVisible(on && touchStyle === 'tap');
+  if (!tap.visible) renderer.setTapPreview(null);
+  $('touch-back').classList.toggle('hidden', !on);
+  const app = $('app');
+  const bar = touchPad.visible ? touchPad.root : tap.visible ? tap.bar : null;
+  if (!bar) {
+    app.style.paddingBottom = '';
+    return renderer.setReserved(0, 0);
+  }
+  const side = isLandscape();
+  bar.classList.toggle('sides', side);
+  const clusters = Array.from(bar.children) as HTMLElement[];
+  const sides = side ? Math.max(...clusters.map((c) => c.offsetWidth)) + 16 : 0;
+  const bottom = side ? 0 : bar.offsetHeight;
+  app.style.paddingBottom = `${bottom}px`;
+  renderer.setReserved(bottom, sides);
+}
+
+/** Your own board right now, in any mode. */
+function myGame(): Game | null {
+  if (mode === 'online') return online?.games?.[0] ?? null;
+  if (mode === 'bot') return match?.players[0] ?? null;
+  return game;
 }
 
 function inGameScreen(s: Screen): boolean {
@@ -275,7 +333,7 @@ function refreshTutorialTip(done = false): void {
   if (!tutorial) return;
   $('tutorial-step').textContent = tutorial.finished ? t('All done') : t('Step {n} of {total}', { n: tutorial.lesson + 1, total: tutorial.count });
   $('tutorial-title').textContent = tutorial.title();
-  $('tutorial-text').textContent = tutorial.text(prefs.keys);
+  $('tutorial-text').textContent = touchActive() ? tutorial.text(touchKeyMap(), touchStyle === 'buttons' ? undefined : touchStyle) : tutorial.text(prefs.keys);
   $('tutorial-end').classList.toggle('hidden', !tutorial.finished);
   $('tutorial-skip').classList.toggle('hidden', tutorial.finished);
   const tip = $('tutorial-tip');
@@ -295,7 +353,7 @@ function finishTutorial(): void {
 
 function startSprint(): void {
   setMode('sprint');
-  const config: GameConfig = { seed: randomSeed(), handling: { ...handling }, goalLines: SPRINT_LINES };
+  const config: GameConfig = { seed: randomSeed(), handling: { ...activeHandling() }, goalLines: SPRINT_LINES };
   game = new Game(config);
   recorder = new Recorder(config);
   popup = null;
@@ -321,8 +379,9 @@ function startBotMatch(level: LevelId, inGauntlet: boolean): void {
 
 function startRound(): void {
   // Both players get the same pieces; a fresh seed each round.
+  const first = mode === 'bot' ? activeHandling() : handling;
   const second = mode === 'bot' ? BOT_HANDLING : handling;
-  const config: MatchConfig = { seed: randomSeed(), players: [{ handling: { ...handling } }, { handling: { ...second } }] };
+  const config: MatchConfig = { seed: randomSeed(), players: [{ handling: { ...first } }, { handling: { ...second } }] };
   bot?.reset();
   match = new Match(config);
   matchRecorder = new MatchRecorder(config);
@@ -491,7 +550,7 @@ function startOnline(how: JoinKind): void {
     },
   });
   online = m;
-  void m.join(how, { name: account.me?.name ?? guestName, handling: { ...handling }, look: myLook(), region, token: account.token });
+  void m.join(how, { name: account.me?.name ?? guestName, handling: { ...activeHandling() }, look: myLook(), region, token: account.token, touch: touchActive() });
 }
 
 /** The lobby text while the queue searches. */
@@ -623,7 +682,7 @@ function drawOnline(m: OnlineMatch, now: number): void {
     score: m.score,
     roundsToWin: m.roundsToWin,
     banner,
-    names: [0, 1].map((i) => m.names[i].toUpperCase() + (m.ratings ? ` · ${m.ratings[i].rating}` : '')) as [string, string],
+    names: [0, 1].map((i) => (m.touch[i] ? '📱 ' : '') + m.names[i].toUpperCase() + (m.ratings ? ` · ${m.ratings[i].rating}` : '')) as [string, string],
     status: onlineStatus(m),
   });
 }
@@ -739,6 +798,15 @@ function frame(now: number): void {
   lastFrame = now;
   // The upbeat track during play, the calm one everywhere else.
   music.play(sound.context, prefs.music === 0 ? null : inGame() ? 'match' : 'menu');
+  if (swipe.visible) {
+    // Swipe moves wait for a piece in play, so a drag started between pieces still lands.
+    swipe.cellPx = renderer.cellPx * (100 / swipeSensitivity);
+    swipe.flush(!!myGame()?.active);
+  }
+  if (tap.visible) {
+    tap.update(myGame());
+    renderer.setTapPreview(tap.shown);
+  }
   if (mode === 'online' && online) {
     const m = online;
     m.update(now, () => {
@@ -794,6 +862,25 @@ function frame(now: number): void {
 
 // ---- input ----------------------------------------------------------------
 
+/** Esc, or the touch back button: close what's open, or leave the game for the menu. */
+function back(): void {
+  if (screen === 'settings') return closeSettings();
+  if (screen === 'customize') return closeCustomize();
+  if (screen === 'sound') return closeSound();
+  if (screen === 'controls') return closeControls();
+  if (mode === 'tutorial' && tutorial && !tutorial.finished) finishTutorial();
+  if (screen === 'account' || screen === 'profile') return show('menu');
+  if (mode === 'online') leaveOnline();
+  if (screen !== 'menu') return show('menu');
+}
+
+/** A move or rotate click when an action starts; the engine reports locks, clears and holds itself. */
+function actionSound(action: Key): void {
+  if (screen !== 'playing') return;
+  if (action === 'left' || action === 'right') sound.move();
+  else if (action.startsWith('rotate')) sound.rotate();
+}
+
 const inGame = () => screen === 'playing' || screen === 'countdown' || screen === 'roundEnd';
 
 addEventListener('keydown', (e) => {
@@ -812,26 +899,15 @@ addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') {
     e.preventDefault();
-    if (screen === 'settings') return closeSettings();
-    if (screen === 'customize') return closeCustomize();
-    if (screen === 'sound') return closeSound();
-    if (screen === 'controls') return closeControls();
-    if (mode === 'tutorial' && tutorial && !tutorial.finished) finishTutorial();
-    if (screen === 'account' || screen === 'profile') return show('menu');
-    if (mode === 'online') leaveOnline();
-    if (screen !== 'menu') return show('menu');
+    return back();
   }
   if (e.code === 'Enter' && screen === 'menu') return startSprint();
   if (e.code === 'Enter' && screen === 'result') return retry();
   const keyboards = mode === 'versus' ? versusKeys : [soloKeys];
   let claimed = false;
   for (const k of keyboards) {
-    // Move and rotate clicks; the engine reports locks, clears and holds itself.
     const action = k.actionFor(e.code);
-    if (action && !e.repeat && screen === 'playing') {
-      if (action === 'left' || action === 'right') sound.move();
-      else if (action.startsWith('rotate')) sound.rotate();
-    }
+    if (action && !e.repeat) actionSound(action);
     claimed = k.keyDown(e.code) || claimed;
   }
   if (claimed && inGame()) e.preventDefault();
@@ -842,7 +918,43 @@ addEventListener('keyup', (e) => {
   for (const k of allKeyboards) claimed = k.keyUp(e.code) || claimed;
   if (claimed && screen === 'playing') e.preventDefault();
 });
-addEventListener('blur', () => allKeyboards.forEach((k) => k.releaseAll()));
+addEventListener('blur', () => {
+  allKeyboards.forEach((k) => k.releaseAll());
+  touchPad.releaseAll();
+  swipe.cancel();
+});
+
+// On-screen buttons press made-up key codes that every solo key map binds.
+const touchPad = new TouchPad(
+  $('app'),
+  (code, key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(code);
+  },
+  (code) => soloKeys.keyUp(code),
+);
+const swipe = new SwipeControls(
+  $('app'),
+  (code, key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(code);
+  },
+  (code) => soloKeys.keyUp(code),
+);
+const tap = new TapControls(
+  $('app'),
+  (x, y) => renderer.cellAt(x, y),
+  (key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(touchCode(key));
+    soloKeys.keyUp(touchCode(key));
+  },
+);
+$('touch-back').addEventListener('click', back);
+addEventListener('resize', refreshTouchPad);
 
 // ---- menu and settings ----------------------------------------------------
 
@@ -900,7 +1012,8 @@ function joinByCode(): void {
 $('open-settings').addEventListener('click', openSettings);
 $('close-settings').addEventListener('click', closeSettings);
 $('reset-settings').addEventListener('click', () => {
-  handling = { ...DEFAULT_HANDLING };
+  if (touchActive()) touchHandling = { ...TOUCH_HANDLING };
+  else handling = { ...DEFAULT_HANDLING };
   syncSettingsForm();
 });
 function download(data: unknown, filename: string): void {
@@ -935,21 +1048,84 @@ function framesLabel(frames: number): string {
   return t('{n} frames ({ms} ms)', { n: frames, ms: Math.round((frames * 1000) / TICK_RATE) });
 }
 
+/** The sliders edit the touch handling while the buttons are on, the keyboard's otherwise. */
 function syncSettingsForm(): void {
-  sliders.das.value = String(handling.das);
-  sliders.arr.value = String(handling.arr);
-  sliders.sdf.value = String(handling.sdf);
-  $('das-out').textContent = framesLabel(handling.das);
-  $('arr-out').textContent = handling.arr === 0 ? t('0 (instant)') : framesLabel(handling.arr);
-  $('sdf-out').textContent = handling.sdf >= SDF_INSTANT ? t('instant') : `${handling.sdf}×`;
+  const h = activeHandling();
+  sliders.das.value = String(h.das);
+  sliders.arr.value = String(h.arr);
+  sliders.sdf.value = String(h.sdf);
+  $('das-out').textContent = framesLabel(h.das);
+  $('arr-out').textContent = h.arr === 0 ? t('0 (instant)') : framesLabel(h.arr);
+  $('sdf-out').textContent = h.sdf >= SDF_INSTANT ? t('instant') : `${h.sdf}×`;
+  $('handling-for').textContent = touchActive()
+    ? t('These settings are for touch controls. Your keyboard settings are kept separately.')
+    : t('These settings are for the keyboard.');
+  $('touch-mode').querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.mode === touchMode));
+  $('touch-style').querySelectorAll('button').forEach((b) => b.classList.toggle('selected', b.dataset.style === touchStyle));
+  $('touch-style-field').classList.toggle('hidden', !touchActive());
+  $('swipe-field').classList.toggle('hidden', !touchActive() || touchStyle !== 'swipe');
+  $('touch-style-help').textContent = touchStyle === 'swipe'
+    ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
+    : touchStyle === 'tap'
+      ? t('Tap: tap where the piece should go, then tap it again to drop it there. ↻ and ↺ turn it.')
+      : '';
+  // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
+  const swiping = touchActive() && touchStyle !== 'buttons';
+  $('das-field').classList.toggle('hidden', swiping);
+  $('arr-field').classList.toggle('hidden', swiping);
+  swipeInput.value = String(swipeSensitivity);
+  $('swipe-out').textContent = `${swipeSensitivity}%`;
 }
 
 for (const [name, input] of Object.entries(sliders) as [keyof typeof sliders, HTMLInputElement][]) {
   input.addEventListener('input', () => {
-    handling = { ...handling, [name]: Number(input.value) };
+    if (touchActive()) touchHandling = { ...touchHandling, [name]: Number(input.value) };
+    else handling = { ...handling, [name]: Number(input.value) };
     syncSettingsForm();
   });
 }
+
+const TOUCH_MODE_NAMES: Record<TouchMode, string> = { auto: 'Auto', on: 'On', off: 'Off' };
+for (const option of ['auto', 'on', 'off'] as const) {
+  const b = document.createElement('button');
+  b.dataset.mode = option;
+  b.textContent = t(TOUCH_MODE_NAMES[option]);
+  b.addEventListener('click', () => {
+    touchMode = option;
+    saveTouchMode(option);
+    syncSettingsForm();
+    refreshTouchMenu();
+  });
+  $('touch-mode').append(b);
+}
+
+const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { tap: 'Tap', swipe: 'Swipe', buttons: 'Buttons' };
+for (const style of ['tap', 'swipe', 'buttons'] as const) {
+  const b = document.createElement('button');
+  b.dataset.style = style;
+  b.textContent = t(TOUCH_STYLE_NAMES[style]);
+  b.addEventListener('click', () => {
+    touchStyle = style;
+    saveTouchStyle(style);
+    setLabelStyle(style);
+    syncSettingsForm();
+  });
+  $('touch-style').append(b);
+}
+
+const swipeInput = $<HTMLInputElement>('swipe-sens');
+swipeInput.addEventListener('input', () => {
+  swipeSensitivity = Number(swipeInput.value);
+  saveSwipeSensitivity(swipeSensitivity);
+  syncSettingsForm();
+});
+
+/** Two players can't share one phone screen, so touch players don't see local versus. */
+function refreshTouchMenu(): void {
+  $('start-versus').classList.toggle('hidden', touchActive());
+  document.body.classList.toggle('touch', touchActive());
+}
+refreshTouchMenu();
 
 function openSettings(): void {
   syncSettingsForm();
@@ -958,6 +1134,7 @@ function openSettings(): void {
 
 function closeSettings(): void {
   saveHandling(handling);
+  saveTouchHandling(touchHandling);
   void account.saveSettings({ handling });
   show('menu');
 }

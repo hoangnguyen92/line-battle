@@ -8,6 +8,7 @@ import {
   type PieceType,
 } from '@line-battle/engine';
 import type { CharacterView } from './character';
+import type { TapPreview } from './tap';
 import { t } from './i18n';
 import { drawCell, PIECE_COLORS, skinSheet, THEME_COLORS, type SkinSheet, type Theme } from './skins';
 
@@ -28,6 +29,20 @@ const CHAR_Y = BOARD_Y + QUEUE_H + 14;
 const CHAR_H = VISIBLE_HEIGHT * CELL - QUEUE_H - 14;
 const METER_W = 8;
 const METER_X = BOARD_X - METER_W - 4;
+
+// Phone layout for versus (a tall, narrow screen): your full board, and the
+// opponent's board shrunk into the column under your next queue.
+const COMPACT_QUEUE = 3;
+const COMPACT_QUEUE_H = COMPACT_QUEUE * 64 + 12;
+const MINI_SCALE = 0.36;
+const MINI_Y = BOARD_Y + COMPACT_QUEUE_H + 40;
+const MINI_X = QUEUE_X + (SIDE_W - BOARD_WIDTH * CELL * MINI_SCALE) / 2 + 4;
+const OPP_CHAR_Y = MINI_Y + VISIBLE_HEIGHT * CELL * MINI_SCALE + 10;
+const OPP_CHAR_H = BOARD_Y + VISIBLE_HEIGHT * CELL - OPP_CHAR_Y;
+/** Your character sits in the left column, under hold and above the stats. */
+const MY_CHAR_Y = BOARD_Y + 96;
+const MY_CHAR_H = 210;
+const COMPACT_POPUP_Y = MY_CHAR_Y + MY_CHAR_H + 32;
 
 export type Layout = 'solo' | 'versus';
 
@@ -79,6 +94,14 @@ export class Renderer {
   private sheets: [SkinSheet, SkinSheet] = [skinSheet('gem'), skinSheet('gem')];
   /** The sheet for the side being drawn right now. */
   private sheet: SkinSheet = this.sheets[0];
+  /** Screen space kept free for touch buttons: below the canvas, and on each side. */
+  private reserved = { bottom: 0, sides: 0 };
+  /** Versus on a tall, narrow screen: the opponent's board is drawn small. */
+  private compact = false;
+  /** CSS pixels per canvas unit. */
+  private scale = 1;
+  /** Tap-to-place: where your piece will go, drawn instead of the ghost. */
+  private tapPreview: TapPreview | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -100,14 +123,52 @@ export class Renderer {
     this.resize();
   }
 
+  /** Keeps `bottom` px free under the canvas and `sides` px free left and right of it. */
+  setReserved(bottom: number, sides: number): void {
+    if (bottom === this.reserved.bottom && sides === this.reserved.sides) return;
+    this.reserved = { bottom, sides };
+    this.resize();
+  }
+
+  setTapPreview(preview: TapPreview | null): void {
+    this.tapPreview = preview;
+  }
+
+  /**
+   * The cell of your board (x, y up from the bottom) under a screen point.
+   * Points a little outside the board snap to its edge; further out is null.
+   */
+  cellAt(clientX: number, clientY: number): [number, number] | null {
+    const r = this.canvas.getBoundingClientRect();
+    const ux = (clientX - r.left) / this.scale;
+    const uy = (clientY - r.top) / this.scale;
+    const col = Math.floor((ux - BOARD_X) / CELL);
+    if (col < -1 || col > BOARD_WIDTH) return null;
+    const row = VISIBLE_HEIGHT - 1 - Math.floor((uy - BOARD_Y) / CELL);
+    if (row < -2) return null;
+    return [Math.max(0, Math.min(BOARD_WIDTH - 1, col)), Math.max(0, Math.min(VISIBLE_HEIGHT - 1, row))];
+  }
+
+  /** How wide one cell of your board is on screen, in CSS pixels. */
+  get cellPx(): number {
+    return CELL * this.scale;
+  }
+
   private get width(): number {
-    return this.layout === 'solo' ? VIEW_W : VIEW_W * 2 + VERSUS_GAP;
+    return this.layout === 'solo' || this.compact ? VIEW_W : VIEW_W * 2 + VERSUS_GAP;
   }
 
   /** Fits the canvas to the window while keeping pixels crisp on high-DPI screens. */
   resize(): void {
+    const freeW = Math.max(1, innerWidth - 2 * this.reserved.sides);
+    const freeH = Math.max(1, innerHeight - this.reserved.bottom);
+    // Side by side unless that would draw the boards much smaller than one big and one small.
+    const wide = Math.min(freeW / (VIEW_W * 2 + VERSUS_GAP), freeH / CANVAS_H);
+    const narrow = Math.min(freeW / VIEW_W, freeH / CANVAS_H);
+    this.compact = this.layout === 'versus' && wide < narrow * 0.75;
     const w = this.width;
-    const scale = Math.min(innerWidth / w, innerHeight / CANVAS_H, 1.6);
+    const scale = Math.min(freeW / w, freeH / CANVAS_H, 1.6);
+    this.scale = scale;
     const dpr = devicePixelRatio || 1;
     this.canvas.style.width = `${Math.floor(w * scale)}px`;
     this.canvas.style.height = `${Math.floor(CANVAS_H * scale)}px`;
@@ -123,7 +184,7 @@ export class Renderer {
     this.drawWell();
     if (!game) return;
     this.drawStack(game);
-    this.drawActive(game);
+    this.drawActive(game, true);
     this.drawHold(game);
     this.drawQueue(game);
     this.drawStats(game, hud);
@@ -133,6 +194,7 @@ export class Renderer {
 
   /** Two boards side by side, each with its garbage meter and character. */
   drawVersus(match: { readonly players: readonly [Game, Game] }, hud: VersusHud): void {
+    if (this.compact) return this.drawVersusCompact(match, hud);
     const c = this.ctx;
     const now = performance.now();
     c.clearRect(0, 0, this.width, CANVAS_H);
@@ -144,19 +206,89 @@ export class Renderer {
       this.sheet = this.sheets[i];
       this.drawWell();
       this.drawStack(game);
-      this.drawActive(game);
+      this.drawActive(game, i === 0);
       this.drawGarbageMeter(game);
       this.drawHold(game);
       this.drawQueue(game);
       this.drawVersusStats(game, i, hud);
       this.drawPopup(hud.popups[i]);
-      this.drawStage();
+      this.drawStage(QUEUE_X, CHAR_Y, SIDE_W, CHAR_H);
       character.draw(c, QUEUE_X, CHAR_Y, SIDE_W, CHAR_H, now);
       if (hud.countdown) this.drawCenterText(hud.countdown);
       c.restore();
     });
     // Round clock between the boards; your board's tick, since online the opponent's lags a little.
     this.drawClock(match.players[0].tick);
+    if (hud.banner) this.drawBanner(hud.banner);
+    if (hud.status) this.drawStatus(hud.status);
+  }
+
+  /**
+   * The phone layout: your board at full size with your character in the
+   * left column; the opponent's board, name and character small on the right.
+   */
+  private drawVersusCompact(match: { readonly players: readonly [Game, Game] }, hud: VersusHud): void {
+    const c = this.ctx;
+    const now = performance.now();
+    const [me, opp] = match.players;
+    c.clearRect(0, 0, this.width, CANVAS_H);
+
+    const [sx, sy] = hud.characters[0].shake(now);
+    c.save();
+    c.translate(sx, sy);
+    this.sheet = this.sheets[0];
+    this.drawWell();
+    this.drawStack(me);
+    this.drawActive(me, true);
+    this.drawGarbageMeter(me);
+    this.drawHold(me);
+    this.drawQueue(me, COMPACT_QUEUE);
+    this.drawVersusStats(me, 0, hud);
+    this.drawStage(BOARD_X - SIDE_W - 16, MY_CHAR_Y, SIDE_W, MY_CHAR_H);
+    hud.characters[0].draw(c, BOARD_X - SIDE_W - 16, MY_CHAR_Y, SIDE_W, MY_CHAR_H, now);
+    this.drawPopup(hud.popups[0], COMPACT_POPUP_Y);
+    if (hud.countdown) this.drawCenterText(hud.countdown);
+    c.restore();
+
+    // The opponent: name and round pips, a shrunken board, and their character.
+    const [ox, oy] = hud.characters[1].shake(now);
+    c.save();
+    c.translate(ox, oy);
+    const color = PLAYER_COLORS[1];
+    c.fillStyle = color;
+    c.font = `800 13px ${FONT}`;
+    c.textAlign = 'left';
+    c.fillText(fitText(c, hud.names[1], SIDE_W - 30), QUEUE_X, MINI_Y - 12);
+    for (let r = 0; r < hud.roundsToWin; r++) {
+      c.beginPath();
+      c.arc(QUEUE_X + SIDE_W - 4 - (hud.roundsToWin - 1 - r) * 12, MINI_Y - 16, 4, 0, Math.PI * 2);
+      c.fillStyle = r < hud.score[1] ? color : this.theme.panelBorder;
+      c.fill();
+    }
+    c.save();
+    c.translate(MINI_X - BOARD_X * MINI_SCALE, MINI_Y - BOARD_Y * MINI_SCALE);
+    c.scale(MINI_SCALE, MINI_SCALE);
+    // Only the visible rows: a spawning piece would run into the name above.
+    c.beginPath();
+    c.rect(METER_X - 2, BOARD_Y - 2, BOARD_X + BOARD_WIDTH * CELL - METER_X + 4, VISIBLE_HEIGHT * CELL + 4);
+    c.clip();
+    this.sheet = this.sheets[1];
+    this.drawWell();
+    this.drawStack(opp);
+    this.drawActive(opp);
+    this.drawGarbageMeter(opp);
+    c.restore();
+    this.drawStage(QUEUE_X, OPP_CHAR_Y, SIDE_W, OPP_CHAR_H);
+    // The figure is drawn at a fixed size, so shrink it to fit the low stage.
+    const k = Math.min(1, OPP_CHAR_H / 190);
+    c.save();
+    c.translate(QUEUE_X, OPP_CHAR_Y);
+    c.scale(k, k);
+    hud.characters[1].draw(c, 0, 0, SIDE_W / k, OPP_CHAR_H / k, now);
+    c.restore();
+    c.restore();
+
+    this.drawClock(me.tick);
     if (hud.banner) this.drawBanner(hud.banner);
     if (hud.status) this.drawStatus(hud.status);
   }
@@ -172,22 +304,22 @@ export class Renderer {
     c.fillText(formatTime(ticks).slice(0, -2), x, 40);
   }
 
-  /** The character's little stage under the next queue. */
-  private drawStage(): void {
+  /** The character's little stage, normally under the next queue. */
+  private drawStage(x: number, y: number, w: number, h: number): void {
     const c = this.ctx;
     const [top, bottom] = this.theme.stage;
-    const g = c.createLinearGradient(0, CHAR_Y, 0, CHAR_Y + CHAR_H);
+    const g = c.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, top);
     g.addColorStop(1, bottom);
     c.fillStyle = g;
     c.strokeStyle = this.theme.panelBorder;
     c.lineWidth = 1;
     c.beginPath();
-    c.roundRect(QUEUE_X + 0.5, CHAR_Y + 0.5, SIDE_W, CHAR_H, 8);
+    c.roundRect(x + 0.5, y + 0.5, w, h, 8);
     c.fill();
     c.stroke();
     c.fillStyle = 'rgba(0,0,0,0.18)';
-    c.fillRect(QUEUE_X + 1, CHAR_Y + CHAR_H - 14, SIDE_W - 1, 14);
+    c.fillRect(x + 1, y + h - 14, w - 1, 14);
   }
 
   private drawStatus(text: string): void {
@@ -312,17 +444,37 @@ export class Renderer {
     }
   }
 
-  private drawActive(game: Game): void {
+  /** The falling piece and its ghost; on your own board a tap-to-place spot replaces the ghost. */
+  private drawActive(game: Game, mine = false): void {
     const ghost = game.ghost();
     const p = game.active;
     if (!p || !ghost) return;
+    const tap = mine ? this.tapPreview : null;
+    if (tap) this.drawTapPreview(tap);
     // The ghost keeps the standard look in every skin.
-    for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), PIECE_COLORS[p.type]);
+    else for (const [x, y] of game.pieceCells(ghost)) this.drawGhost(...this.cellPos(x, y), PIECE_COLORS[p.type]);
     const c = this.ctx;
     c.save();
     c.shadowColor = PIECE_COLORS[p.type];
     c.shadowBlur = 14;
     for (const [x, y] of game.pieceCells(p)) this.drawBlock(...this.cellPos(x, y), CELL, CELL_ID[p.type]);
+    c.restore();
+  }
+
+  /** The picked spot: the piece half see-through, with a bright outline to tap again. */
+  private drawTapPreview(tap: TapPreview): void {
+    const c = this.ctx;
+    for (const [x, y] of tap.cells) this.drawBlock(...this.cellPos(x, y), CELL, CELL_ID[tap.type], 0.5);
+    c.save();
+    c.strokeStyle = '#ffffff';
+    c.lineWidth = 2;
+    c.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 160);
+    for (const [x, y] of tap.cells) {
+      const [px, py] = this.cellPos(x, y);
+      c.beginPath();
+      c.roundRect(px + 2, py + 2, CELL - 4, CELL - 4, 5);
+      c.stroke();
+    }
     c.restore();
   }
 
@@ -391,11 +543,11 @@ export class Renderer {
     if (game.hold) this.drawMiniPiece(game.hold, x + SIDE_W / 2, y + 40, game.holdUsed);
   }
 
-  private drawQueue(game: Game): void {
+  private drawQueue(game: Game, shown = Infinity): void {
     const x = QUEUE_X;
     const y = BOARD_Y;
     this.label('NEXT', x, y - 8);
-    const queue = game.queue;
+    const queue = game.queue.slice(0, shown);
     this.panel(x, y, SIDE_W, queue.length * 64 + 12);
     queue.forEach((t, i) => this.drawMiniPiece(t, x + SIDE_W / 2, y + 38 + i * 64));
   }
@@ -421,7 +573,7 @@ export class Renderer {
     }
   }
 
-  private drawPopup(popup: Popup | null): void {
+  private drawPopup(popup: Popup | null, top = BOARD_Y + 150): void {
     if (!popup) return;
     const age = performance.now() - popup.at;
     if (age > 1600) return;
@@ -429,7 +581,7 @@ export class Renderer {
     c.globalAlpha = age < 1200 ? 1 : 1 - (age - 1200) / 400;
     c.textAlign = 'right';
     const x = BOARD_X - 16;
-    let y = BOARD_Y + 150;
+    let y = top;
     popup.lines.forEach((line, i) => {
       c.fillStyle = i === 0 ? this.theme.value : '#9d86ff';
       c.font = `800 ${i === 0 ? 22 : 16}px ${FONT}`;
@@ -450,4 +602,12 @@ export class Renderer {
     c.fillText(text, BOARD_X + (BOARD_WIDTH * CELL) / 2, BOARD_Y + (VISIBLE_HEIGHT * CELL) / 2);
     c.textBaseline = 'alphabetic';
   }
+}
+
+/** `text`, cut with an ellipsis to fit `max` pixels in the current font. */
+function fitText(c: CanvasRenderingContext2D, text: string, max: number): string {
+  if (c.measureText(text).width <= max) return text;
+  let cut = text;
+  while (cut.length > 1 && c.measureText(`${cut}…`).width > max) cut = cut.slice(0, -1);
+  return `${cut}…`;
 }

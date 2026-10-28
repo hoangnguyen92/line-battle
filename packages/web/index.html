@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Line Battle</title>
     <meta name="description" content="Line Battle: a free falling-block versus game in your browser. Clear lines, build combos and bury your opponent, against bots or online." />
     <meta name="theme-color" content="#0e0f16" />
@@ -111,11 +111,26 @@
 
       <section id="settings" class="overlay hidden">
         <h2>Handling</h2>
-        <label><span class="setting-name">DAS: Delayed Auto Shift</span> <output id="das-out"></output>
+        <div class="field touch-field">
+          <span class="setting-name">Touch controls</span>
+          <div id="touch-mode" class="segmented"></div>
+          <span class="setting-help">Auto turns touch controls on for phones and tablets.</span>
+        </div>
+        <div id="touch-style-field" class="field touch-field">
+          <span class="setting-name">Style</span>
+          <div id="touch-style" class="segmented"></div>
+          <span id="touch-style-help" class="setting-help"></span>
+        </div>
+        <label id="swipe-field"><span class="setting-name">Swipe sensitivity</span> <output id="swipe-out"></output>
+          <input id="swipe-sens" type="range" min="50" max="200" step="10" />
+          <span class="setting-help">Higher = the piece moves further for the same drag.</span>
+        </label>
+        <p id="handling-for" class="hint"></p>
+        <label id="das-field"><span class="setting-name">DAS: Delayed Auto Shift</span> <output id="das-out"></output>
           <input id="das" type="range" min="0" max="20" step="1" />
           <span class="setting-help">How long you hold left or right before the piece starts sliding on its own. Lower = slides sooner.</span>
         </label>
-        <label><span class="setting-name">ARR: Auto Repeat Rate</span> <output id="arr-out"></output>
+        <label id="arr-field"><span class="setting-name">ARR: Auto Repeat Rate</span> <output id="arr-out"></output>
           <input id="arr" type="range" min="0" max="5" step="1" />
           <span class="setting-help">Once it slides, the time between each step. 0 = it jumps straight to the wall.</span>
         </label>
@@ -167,6 +182,8 @@
           <button id="close-controls" class="primary">Done</button>
         </div>
       </section>
+
+      <button id="touch-back" class="touch-back hidden" aria-label="Menu">✕</button>
 
       <section id="tutorial-tip" class="tip hidden" aria-live="polite">
         <p id="tutorial-step" class="step"></p>

@@ -113,6 +113,8 @@ export interface QueueJoinOptions {
   name: string;
   handling: Handling;
   look: Look;
+  /** Playing with on-screen touch buttons; the queue prefers to pair phones with phones. */
+  touch?: boolean;
 }
 
 /** Queue server to client messages. */
