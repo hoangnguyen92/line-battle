@@ -8,6 +8,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 /** Server samples older than this are dropped. */
 const SYSTEM_KEEP_MS = 14 * DAY_MS;
+/** One point on the dashboard's 24-hour charts. */
+const SYSTEM_POINT_MS = 5 * 60_000;
 /** Raw play events older than this are dropped; the dashboard looks back 30 days. */
 const EVENTS_KEEP_MS = 120 * DAY_MS;
 /** A visitor whose page sent anything this recently counts as online now. */
@@ -333,9 +335,13 @@ export class Metrics {
       onlineMatches: get<{ n: number }>('SELECT count(*) n FROM matches').n,
       games: get<{ n: number }>("SELECT count(*) n FROM events WHERE name = 'play'").n,
     };
+    // Averaged into 5-minute points: a sample a minute made this ~270 KB, and
+    // responses that large never finish (see the note on apiEndpoint).
     const system = all(
-      `SELECT at, cpu, mem_used memUsed, mem_total memTotal, disk_used diskUsed, disk_total diskTotal, load1, lag_ms lagMs, rss, net_rx netRx, net_tx netTx, playing
-       FROM system_samples WHERE at >= ? ORDER BY at`,
+      `SELECT max(at) at, round(avg(cpu), 1) cpu, round(avg(mem_used)) memUsed, max(mem_total) memTotal,
+              max(disk_used) diskUsed, max(disk_total) diskTotal, round(avg(load1), 2) load1, round(max(lag_ms), 1) lagMs,
+              round(avg(rss)) rss, round(avg(net_rx)) netRx, round(avg(net_tx)) netTx, max(playing) playing
+       FROM system_samples WHERE at >= ? GROUP BY at / ${SYSTEM_POINT_MS} ORDER BY at`,
       now - DAY_MS,
     );
 
