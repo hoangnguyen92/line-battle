@@ -232,7 +232,7 @@ function refreshTouchPad(): void {
   }
   const side = isLandscape();
   bar.classList.toggle('sides', side);
-  const clusters = Array.from(bar.children) as HTMLElement[];
+  const clusters = Array.from(bar.querySelectorAll<HTMLElement>('.touch-cluster'));
   const sides = side ? Math.max(...clusters.map((c) => c.offsetWidth)) + 16 : 0;
   const bottom = side ? 0 : bar.offsetHeight;
   app.style.paddingBottom = `${bottom}px`;

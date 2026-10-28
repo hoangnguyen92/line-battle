@@ -141,6 +141,7 @@ const VI: Record<string, string> = {
   'Style': 'Kiểu',
   'Swipe': 'Vuốt',
   'Tap': 'Chạm',
+  'Drag ← → anywhere to move · Tap to turn · Swipe ↓ to drop': 'Kéo ← → ở đâu cũng được để di chuyển · Chạm để xoay · Vuốt ↓ để thả',
   'Tap: drag sideways anywhere to move the outline, tap to turn it, swipe down or press ⤓ to drop.': 'Chạm: kéo ngang ở bất kỳ đâu để di chuyển viền sáng, chạm để xoay, vuốt xuống hoặc bấm ⤓ để thả.',
   'tapping a spot': 'chạm vào chỗ muốn đặt',
   'Drag your thumb left and right anywhere on the screen to move the bright outline, then swipe down (or press ⤓) to drop the piece there. Put one on the left and one on the right.': 'Kéo ngón cái sang trái, sang phải ở bất kỳ đâu trên màn hình để dời viền sáng, rồi vuốt xuống (hoặc bấm ⤓) để thả khối vào đó. Hãy đặt một khối bên trái và một khối bên phải.',
