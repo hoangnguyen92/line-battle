@@ -320,7 +320,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     headers: { authorization: `Bearer ${key}`, ...(body ? { 'content-type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => {
+    if (res.ok) throw new Error(`HTTP ${res.status}, dữ liệu không đọc được`);
+    return {};
+  });
   if (!res.ok) throw Object.assign(new Error((data as { error?: string }).error ?? `HTTP ${res.status}`), { status: res.status });
   return data as T;
 }

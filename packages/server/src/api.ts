@@ -247,6 +247,9 @@ export function clientIp(headers: Headers): string {
 }
 
 /** Mounts the API under /api on the Colyseus server's router. */
+// Keep response bodies small (well under 200 KB): @colyseus/better-call 1.3.x
+// never ends a response whose write had to wait for 'drain', so a big body
+// hangs the request.
 export function apiEndpoint(api: Api) {
   // cloneRequest leaves the original body unread, for webhooks that need it byte for byte.
   return createEndpoint('/api/**', { method: ['GET', 'POST'], requireRequest: true, cloneRequest: true }, async (ctx) => {
