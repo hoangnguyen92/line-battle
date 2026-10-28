@@ -372,7 +372,9 @@ function startVersus(): void {
 function startBotMatch(level: LevelId, inGauntlet: boolean): void {
   setMode('bot');
   gauntlet = inGauntlet;
-  bot = new BotController(LEVELS[level], botWorker.planner(level));
+  // A thumb is slower than a keyboard: on a phone the Beginner bot plays a bit slower and makes more mistakes.
+  const lv = level === 1 && touchActive() ? { ...LEVELS[1], pps: 0.5, mistakeRate: 0.35 } : LEVELS[level];
+  bot = new BotController(lv, botWorker.planner(level));
   score = [0, 0];
   startRound();
 }
@@ -381,7 +383,10 @@ function startRound(): void {
   // Both players get the same pieces; a fresh seed each round.
   const first = mode === 'bot' ? activeHandling() : handling;
   const second = mode === 'bot' ? BOT_HANDLING : handling;
-  const config: MatchConfig = { seed: randomSeed(), players: [{ handling: { ...first } }, { handling: { ...second } }] };
+  // Tapping to place against a bot, your piece waits at the top until you drop it.
+  const waits = mode === 'bot' && touchActive() && touchStyle === 'tap';
+  const mine: Partial<GameConfig> = waits ? { handling: { ...first }, gravity: 0 } : { handling: { ...first } };
+  const config: MatchConfig = { seed: randomSeed(), players: [mine, { handling: { ...second } }] };
   bot?.reset();
   match = new Match(config);
   matchRecorder = new MatchRecorder(config);
@@ -971,7 +976,8 @@ $('tutorial-bot').addEventListener('click', () => {
   startBotMatch(1, false);
 });
 // The big home-page buttons: one tap into a match.
-$('play-now').addEventListener('click', () => startBotMatch(botLevel, false));
+// On a phone, Play now starts against the easiest bot.
+$('play-now').addEventListener('click', () => startBotMatch(touchActive() ? 1 : botLevel, false));
 $('play-online').addEventListener('click', () => startOnline({ kind: 'quick' }));
 $('play-friend').addEventListener('click', () => startOnline({ kind: 'create' }));
 $('hero-tutorial').addEventListener('click', startTutorial);
@@ -1072,7 +1078,7 @@ function syncSettingsForm(): void {
   $('touch-style-help').textContent = touchStyle === 'swipe'
     ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
     : touchStyle === 'tap'
-      ? t('Tap: tap where the piece should go, then tap it again to drop it there. ↻ and ↺ turn it.')
+      ? t('Tap: touch or drag on the board to move the outline, ↻ and ↺ turn it, ⤓ drops the piece there.')
       : '';
   // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
   const swiping = touchActive() && touchStyle !== 'buttons';

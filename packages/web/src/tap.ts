@@ -23,8 +23,8 @@ function centerX(p: Placement): number {
 }
 
 /**
- * Tap to place: tap the board where the piece should go and it shows there;
- * tap the same spot again (or Drop) to put it there. The rotate buttons turn
+ * Tap to place: touch or drag on the board and an outline shows where the
+ * piece will go; the drop button puts it there. The rotate buttons turn
  * the shown spot, Hold swaps the piece. Placements come from the bot's move
  * search, limited to ones reached without soft drop so any handling works,
  * and are played as ordinary key taps.
@@ -40,6 +40,8 @@ export class TapControls {
   private pieceKey = '';
   private queue: Key[] = [];
   private game: Game | null = null;
+  /** Pieces placed when Drop was last pressed, so a double press can't drop the next piece too. */
+  private droppedAt = -1;
 
   constructor(
     parent: HTMLElement,
@@ -49,10 +51,18 @@ export class TapControls {
   ) {
     this.layer = document.createElement('div');
     this.layer.className = 'swipe hidden';
+    // Touching or dragging over the board moves the outline; only the drop button drops.
+    let steering: number | null = null;
     this.layer.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      this.tapBoard(e.clientX, e.clientY);
+      steering = e.pointerId;
+      this.layer.setPointerCapture?.(e.pointerId);
+      this.aimAt(e.clientX, e.clientY);
     }, { passive: false });
+    this.layer.addEventListener('pointermove', (e) => {
+      if (e.pointerId === steering) this.aimAt(e.clientX, e.clientY);
+    });
+    for (const type of ['pointerup', 'pointercancel'] as const) this.layer.addEventListener(type, () => (steering = null));
     this.layer.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.bar = document.createElement('div');
@@ -143,16 +153,13 @@ export class TapControls {
     return best;
   }
 
-  private tapBoard(clientX: number, clientY: number): void {
+  /** Moves the outline to the column under the finger, keeping its rotation. */
+  private aimAt(clientX: number, clientY: number): void {
     const cell = this.cellAt(clientX, clientY);
     if (!cell || !this.game?.active) return;
-    const [cx, cy] = cell;
-    const p = this.preview;
-    // A second tap on the shown spot drops the piece there.
-    if (p && cellsOf(p).some(([x, y]) => x === cx && Math.abs(y - cy) <= 1)) return this.drop();
-    const rot = p?.rot ?? this.game.active.rot;
-    // The spot in this rotation that covers the tapped column, centred on it as near as it can be.
-    this.preview = this.nearest(rot, cx) ?? this.preview;
+    const rot = this.preview?.rot ?? this.game.active.rot;
+    // The spot in this rotation centred on the column as near as it can be.
+    this.preview = this.nearest(rot, cell[0]) ?? this.preview;
   }
 
   /** Turns the shown spot, keeping it near the same column; shapes that repeat are skipped. */
@@ -171,7 +178,7 @@ export class TapControls {
   private drop(): void {
     const game = this.game;
     const want = this.preview;
-    if (!game?.active || !want) return;
+    if (!game?.active || !want || game.piecesPlaced === this.droppedAt) return;
     // The piece may have fallen since the spot was picked: find the way there from where it is now.
     const now = this.search(game, BotBoard.from(game.board));
     const plan = now.find((p) => sameCells(p, want)) ?? null;
@@ -180,6 +187,7 @@ export class TapControls {
       this.preview = this.nearest(want.rot, centerX(want));
       return;
     }
+    this.droppedAt = game.piecesPlaced;
     this.queue.push(...plan.inputs, 'hardDrop');
   }
 }
