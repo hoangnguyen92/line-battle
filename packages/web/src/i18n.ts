@@ -46,7 +46,7 @@ const VI: Record<string, string> = {
   'Free 1v1 against a bot. No sign-up, no download.': 'Đấu 1v1 với máy, miễn phí. Không cần đăng ký, không cần tải.',
   'Play online': 'Chơi online',
   'More modes': 'Chế độ khác',
-  'Play a friend': 'Rủ bạn chơi',
+  'Play with a friend': 'Rủ bạn chơi',
   'New here? How to play': 'Mới chơi? Xem cách chơi',
   '40 Lines Sprint': 'Sprint 40 hàng',
   'Best:': 'Kỷ lục:',
