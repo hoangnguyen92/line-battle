@@ -20,6 +20,26 @@ function columnPx(): number {
   return Math.max(24, innerWidth / 12);
 }
 
+/** The how-to line shows until a player has dropped this many pieces by touch. */
+const HINT_DROPS = 40;
+const DROPS_KEY = 'lineBattle.tapDrops';
+
+function drops(): number {
+  try {
+    return Number(localStorage.getItem(DROPS_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function countDrop(): void {
+  try {
+    localStorage.setItem(DROPS_KEY, String(drops() + 1));
+  } catch {
+    /* the hint just keeps showing */
+  }
+}
+
 function cellsOf(p: Placement): [number, number][] {
   return PIECE_CELLS[p.type][p.rot].map(([dx, dy]) => [p.x + dx, p.y + dy]);
 }
@@ -27,6 +47,14 @@ function cellsOf(p: Placement): [number, number][] {
 function sameCells(a: Placement, b: Placement): boolean {
   const key = (p: Placement) => cellsOf(p).map(([x, y]) => y * 16 + x).sort((m, n) => m - n).join(',');
   return key(a) === key(b);
+}
+
+/** The piece's outline in a rotation, wherever it is: S, Z and I look the same two ways round. */
+function shapeOf(type: PieceType, rot: number): string {
+  const cells = PIECE_CELLS[type][rot];
+  const x0 = Math.min(...cells.map(([x]) => x));
+  const y0 = Math.min(...cells.map(([, y]) => y));
+  return cells.map(([x, y]) => (y - y0) * 4 + (x - x0)).sort((a, b) => a - b).join(',');
 }
 
 function centerX(p: Placement): number {
@@ -45,8 +73,9 @@ function centerX(p: Placement): number {
 export class TapControls {
   /** Full-screen layer that takes taps on the board. */
   readonly layer: HTMLElement;
-  /** Hold, rotate and drop buttons. */
+  /** Hold, rotate and drop buttons, with a how-to line above them for new players. */
   readonly bar: HTMLElement;
+  private hint: HTMLElement;
   preview: Placement | null = null;
   private placements: Placement[] = [];
   /** Changes whenever there's a new piece or the board changes. */
@@ -55,6 +84,8 @@ export class TapControls {
   private game: Game | null = null;
   /** Pieces placed when Drop was last pressed, so a double press can't drop the next piece too. */
   private droppedAt = -1;
+  /** The finger steering the outline: where it went down, and the column it steers from (null until there's a piece). */
+  private finger: { id: number; x: number; y: number; at: number; anchorX: number; center: number | null; moved: boolean } | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -64,38 +95,52 @@ export class TapControls {
     this.layer.className = 'swipe hidden';
     // One thumb anywhere on the screen: drag sideways moves the outline, a tap turns it,
     // a quick swipe down drops. The drop button does the same as the swipe.
-    let finger: { id: number; x: number; y: number; at: number; center: number; moved: boolean } | null = null;
+    // A new touch always takes over, so a lost pointerup can never leave the controls stuck.
     this.layer.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      if (finger || !this.preview) return;
       this.layer.setPointerCapture?.(e.pointerId);
-      finger = { id: e.pointerId, x: e.clientX, y: e.clientY, at: e.timeStamp, center: centerX(this.preview), moved: false };
+      this.finger = { id: e.pointerId, x: e.clientX, y: e.clientY, at: e.timeStamp, anchorX: e.clientX, center: null, moved: false };
     }, { passive: false });
     this.layer.addEventListener('pointermove', (e) => {
-      if (!finger || e.pointerId !== finger.id || !this.preview) return;
-      const dx = e.clientX - finger.x;
-      const dy = e.clientY - finger.y;
-      if (Math.hypot(dx, dy) > TAP_SLOP_PX) finger.moved = true;
+      const f = this.finger;
+      if (!f || e.pointerId !== f.id) return;
+      const dx = e.clientX - f.x;
+      const dy = e.clientY - f.y;
+      if (Math.hypot(dx, dy) > TAP_SLOP_PX) f.moved = true;
+      if (!this.preview) return;
+      // A drag that started between pieces (or on the last piece) steers the current one from here.
+      if (f.center === null) {
+        f.center = centerX(this.preview);
+        f.anchorX = e.clientX;
+      }
       // Mostly downward is a drop swipe, not a move.
       if (dy > Math.abs(dx) * 1.5) return;
-      const cols = Math.round(dx / columnPx());
-      this.preview = this.nearest(this.preview.rot, finger.center + cols) ?? this.preview;
+      const cols = Math.round((e.clientX - f.anchorX) / columnPx());
+      this.preview = this.nearest(this.preview.rot, f.center + cols) ?? this.preview;
     });
     this.layer.addEventListener('pointerup', (e) => {
-      const f = finger;
+      const f = this.finger;
       if (!f || e.pointerId !== f.id) return;
-      finger = null;
+      this.finger = null;
       const dx = e.clientX - f.x;
       const dy = e.clientY - f.y;
       const quick = e.timeStamp - f.at < SWIPE_MAX_MS;
       if (!f.moved && quick) return this.turn(1);
       if (quick && dy > DROP_SWIPE_PX && dy > Math.abs(dx) * 1.5) this.drop();
     });
-    this.layer.addEventListener('pointercancel', () => (finger = null));
+    for (const type of ['pointercancel', 'lostpointercapture'] as const) {
+      this.layer.addEventListener(type, (e) => {
+        if (this.finger?.id === e.pointerId) this.finger = null;
+      });
+    }
     this.layer.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.bar = document.createElement('div');
     this.bar.className = 'touchpad tapbar hidden';
+    this.hint = document.createElement('p');
+    this.hint.className = 'tap-hint';
+    this.hint.textContent = t('Drag ← → anywhere to move · Tap to turn · Swipe ↓ to drop');
+    this.bar.append(this.hint);
     const groups: [string, string, () => void][][] = [
       [['HOLD', 'Hold', () => this.queue.push('hold')], ['↺', 'Rotate counter-clockwise', () => this.turn(3)]],
       [['↻', 'Rotate clockwise', () => this.turn(1)], ['⤓', 'Drop', () => this.drop()]],
@@ -134,6 +179,8 @@ export class TapControls {
     this.queue = [];
     this.preview = null;
     this.pieceKey = '';
+    this.finger = null;
+    this.hint.classList.toggle('hidden', drops() >= HINT_DROPS);
   }
 
   /** Each frame: follows your game, and plays queued taps once a piece is in play. */
@@ -152,6 +199,8 @@ export class TapControls {
       this.placements = this.search(game, board);
       // Keep the spot picked for this piece if it's still there; otherwise start from where it would land now.
       this.preview = (old && old.type === active.type && this.placements.find((p) => sameCells(p, old))) || this.nearest(active.rot, active.x + 1.5);
+      // A finger still down steers the new piece from where it is now.
+      if (this.finger && this.preview !== old) this.finger.center = null;
     }
     for (const k of this.queue) this.press(k);
     this.queue = [];
@@ -167,12 +216,18 @@ export class TapControls {
     return findPlacements(board, a.type, { x: a.x, y: a.y, rot: a.rot }).filter((p) => !p.inputs.includes('softDrop'));
   }
 
-  /** The placement in rotation `rot` closest to column `x` (its middle). */
+  /**
+   * The placement shaped like rotation `rot` closest to column `x` (its middle). Matching the
+   * shape, not the rotation, matters: the move search keeps one of two rotations that fill the
+   * same cells, so an upright Z can be rotation 1 in one column and 3 in the next.
+   */
   private nearest(rot: number, x: number): Placement | null {
     let best: Placement | null = null;
     let bestD = Infinity;
+    if (!this.placements.length) return null;
+    const shape = shapeOf(this.placements[0].type, rot);
     for (const p of this.placements) {
-      if (p.rot !== rot) continue;
+      if (shapeOf(p.type, p.rot) !== shape) continue;
       const d = Math.abs(centerX(p) - x);
       if (d < bestD) {
         best = p;
@@ -186,8 +241,11 @@ export class TapControls {
   private turn(dir: 1 | 3): void {
     const p = this.preview;
     if (!p) return;
+    const now = shapeOf(p.type, p.rot);
     for (let i = 1; i <= 3; i++) {
-      const next = this.nearest((p.rot + dir * i) % 4, centerX(p));
+      const rot = (p.rot + dir * i) % 4;
+      if (shapeOf(p.type, rot) === now) continue;
+      const next = this.nearest(rot, centerX(p));
       if (next) {
         this.preview = next;
         return;
@@ -208,6 +266,7 @@ export class TapControls {
       return;
     }
     this.droppedAt = game.piecesPlaced;
+    countDrop();
     this.queue.push(...plan.inputs, 'hardDrop');
   }
 }
