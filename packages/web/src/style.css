@@ -192,6 +192,8 @@ button.play-now {
 .hero-note { margin: 0; font-size: 14px; color: var(--muted); text-align: center; }
 .hero-more { display: flex; gap: 10px; width: min(420px, 100%); }
 .hero-more > button { flex: 1; padding-top: 12px; padding-bottom: 12px; font-size: 16px; }
+#hero-tutorial { font-size: 14px; color: var(--muted); }
+#hero-tutorial:hover { color: var(--text); }
 .more-modes { width: 100%; }
 .more-modes > summary { cursor: pointer; color: var(--muted); font-size: 15px; text-align: center; list-style-position: inside; }
 .more-modes > summary:hover { color: var(--text); }

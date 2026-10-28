@@ -973,6 +973,7 @@ $('tutorial-bot').addEventListener('click', () => {
 // The big home-page buttons: one tap into a match.
 $('play-now').addEventListener('click', () => startBotMatch(botLevel, false));
 $('play-online').addEventListener('click', () => startOnline({ kind: 'quick' }));
+$('play-friend').addEventListener('click', () => startOnline({ kind: 'create' }));
 $('hero-tutorial').addEventListener('click', startTutorial);
 $('start-versus').addEventListener('click', startVersus);
 $('start-bot').addEventListener('click', () => startBotMatch(botLevel, false));
