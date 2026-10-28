@@ -317,3 +317,6 @@ body.touch canvas { touch-action: none; }
 .swipe { z-index: 1; }
 .tip { z-index: 2; }
 .touchpad { z-index: 2; }
+/* Tap to place: the drop button is the only way to drop, so make it the biggest. */
+.tapbar .touch-cluster.right { grid-template-columns: 1fr 1.5fr; }
+.tapbar .touch-btn { height: min(11vh, 84px); }

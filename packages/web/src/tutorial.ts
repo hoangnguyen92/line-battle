@@ -41,7 +41,7 @@ const LESSONS: Lesson[] = [
     title: 'Move',
     text: (k) => t('Move the falling piece left and right with {left} and {right}.', { left: keysText(k.left), right: keysText(k.right) }),
     swipe: 'Drag your finger left and right anywhere on the screen: the piece follows it.',
-    tap: 'Tap the board where you want the piece, then tap the bright outline again to drop it there. Put one on the left and one on the right.',
+    tap: 'Touch or drag on the board to move the bright outline, then press ⤓ to drop the piece there. Put one on the left and one on the right.',
     done: (p) => p.has('left') && p.has('right'),
   },
   {
@@ -55,7 +55,7 @@ const LESSONS: Lesson[] = [
     title: 'Drop',
     text: (k) => t('Hold {soft} to drop faster, or press {hard} to drop it all the way at once.', { soft: keysText(k.softDrop), hard: keysText(k.hardDrop) }),
     swipe: 'Drag down slowly to drop faster, or flick down quickly to drop it all the way at once.',
-    tap: 'Tap the outline again, or press ⤓, to drop the piece.',
+    tap: 'Press ⤓ to drop the piece where the outline is.',
     done: (p, ev) => p.has('hardDrop') && ev.some((e) => e.type === 'lock'),
   },
   {
