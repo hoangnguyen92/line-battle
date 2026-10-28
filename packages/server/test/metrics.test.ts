@@ -61,6 +61,7 @@ describe('metrics', () => {
     expect(d.modes.find((m: any) => m.mode === 'bot-2')).toMatchObject({ games: 1, finished: 1, quit: 0, avgSeconds: 90 });
     expect(d.modes.find((m: any) => m.mode === 'sprint')).toMatchObject({ games: 1, finished: 0, quit: 1 });
     expect(d.clicks).toEqual([{ button: 'start-bot', clicks: 1, visitors: 1 }]);
+    expect(d.devices).toEqual([]);
     expect(d.onlineNow).toBe(1);
     expect(d.totals.visitors).toBe(2);
     expect(d.system.now.memTotal).toBeGreaterThan(0);
@@ -73,6 +74,18 @@ describe('metrics', () => {
     const ok = await api.handle(req('GET', '/api/admin/dashboard', null, 'secret-key'));
     expect(ok.status).toBe(200);
     expect((ok.body as any).sources[0].source).toBe('youtube');
+  });
+
+  it('counts visitors per device and how many of them played', () => {
+    metrics.record(V1, [{ e: 'visit' }, { e: 'device', d: 'mobile' }, { e: 'time', n: 10 }]);
+    metrics.record(V2, [{ e: 'visit' }, { e: 'device', d: 'desktop' }, { e: 'play', d: 'bot-1' }, { e: 'time', n: 100 }]);
+    const d = metrics.dashboard() as any;
+    expect(d.devices).toEqual(
+      expect.arrayContaining([
+        { device: 'mobile', visitors: 1, players: 0, avgStay: 10 },
+        { device: 'desktop', visitors: 1, players: 1, avgStay: 100 },
+      ]),
+    );
   });
 
   it('live readings show who has the game open and the machine now', async () => {

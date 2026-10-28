@@ -30,6 +30,7 @@ interface Dashboard {
   stay: { avgSeconds: number; medianSeconds: number };
   days: { day: string; visitors?: number; newVisitors?: number; returning?: number; players?: number; games?: number; minutes?: number; signups?: number; onlineMatches?: number }[];
   sources: { source: string; visitors: number; players: number; minutes: number }[];
+  devices: { device: string; visitors: number; players: number; avgStay: number | null }[];
   modes: { mode: string; games: number; finished: number; quit: number; avgSeconds: number | null }[];
   clicks: { button: string; clicks: number; visitors: number }[];
   system: {
@@ -271,6 +272,17 @@ function render(d: Dashboard): void {
     $('sources'),
     ['Nguồn', 'Người', 'Có chơi', 'Phút/người'],
     d.sources.map((r) => [r.source, withBar(fmt(r.visitors), r.visitors, maxSource, 60), pct(r.players, r.visitors), (r.minutes / Math.max(1, r.visitors)).toFixed(1)]),
+  );
+
+  table(
+    $('devices'),
+    ['Thiết bị', 'Người', 'Có chơi', 'Ở lại TB'],
+    d.devices.map((r) => [
+      ({ mobile: 'Điện thoại', tablet: 'Máy tính bảng', desktop: 'Máy tính' } as Record<string, string>)[r.device] ?? r.device,
+      fmt(r.visitors),
+      pct(r.players, r.visitors),
+      duration(r.avgStay),
+    ]),
   );
 
   table(
