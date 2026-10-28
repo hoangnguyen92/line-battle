@@ -15,7 +15,7 @@ const EVENTS_KEEP_MS = 120 * DAY_MS;
 /** A visitor whose page sent anything this recently counts as online now. */
 const ONLINE_MS = 75 * 1000;
 
-export const EVENT_NAMES = ['visit', 'click', 'play', 'game-finished', 'game-quit', 'game-left', 'time', 'signup'] as const;
+export const EVENT_NAMES = ['visit', 'click', 'play', 'game-finished', 'game-quit', 'game-left', 'time', 'signup', 'device'] as const;
 
 const VISITOR = /^[a-z0-9]{16}$/;
 const DETAIL = /^[a-z0-9._:-]{1,48}$/i;
@@ -309,6 +309,17 @@ export class Metrics {
        WHERE v.first_at >= ? GROUP BY v.source ORDER BY visitors DESC LIMIT 30`,
       since30,
     );
+    // Phone, tablet or computer, from each visitor's latest report, with how many of them played.
+    const devices = all<{ device: string; visitors: number; players: number; avgStay: number | null }>(
+      `WITH d AS (SELECT visitor, max(detail) device FROM events WHERE at >= ? AND name = 'device' GROUP BY visitor)
+       SELECT d.device, count(*) visitors,
+         sum(EXISTS (SELECT 1 FROM events e WHERE e.visitor = d.visitor AND e.name = 'play' AND e.at >= ?)) players,
+         round(avg((SELECT sum(value) FROM events e WHERE e.visitor = d.visitor AND e.name = 'time' AND e.at >= ?))) avgStay
+       FROM d GROUP BY d.device ORDER BY visitors DESC`,
+      since7,
+      since7,
+      since7,
+    );
     const modes = all<{ mode: string; games: number; finished: number; quit: number; avgSeconds: number }>(
       `SELECT detail mode,
          sum(name = 'play') games,
@@ -352,6 +363,7 @@ export class Metrics {
       stay: { avgSeconds: stay?.avg ?? 0, medianSeconds: stay?.median ?? 0 },
       days: Object.entries(days).map(([day, v]) => ({ day, ...v })),
       sources,
+      devices,
       modes,
       clicks,
       system: { now: this.liveNow().system, last24h: system },

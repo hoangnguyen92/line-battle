@@ -66,6 +66,13 @@ export function visitSource(url: string, referrer: string): string {
   return host.slice(0, 40);
 }
 
+/** Phone, tablet or computer: touch-first screens by their shorter side. */
+export function deviceKind(): string {
+  const touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  if (!touch) return 'desktop';
+  return Math.min(screen.width, screen.height) < 600 ? 'mobile' : 'tablet';
+}
+
 export class Analytics {
   private readonly visitor = visitorId();
   private queue: TrackedEvent[] = [];
@@ -78,6 +85,7 @@ export class Analytics {
 
   constructor() {
     this.track('visit', visitSource(location.href, document.referrer));
+    this.track('device', deviceKind());
     // Every button and link with an id, so the dashboard shows what people press.
     document.addEventListener(
       'click',
