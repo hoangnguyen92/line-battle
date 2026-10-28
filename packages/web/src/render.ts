@@ -134,21 +134,6 @@ export class Renderer {
     this.tapPreview = preview;
   }
 
-  /**
-   * The cell of your board (x, y up from the bottom) under a screen point.
-   * Points a little outside the board snap to its edge; further out is null.
-   */
-  cellAt(clientX: number, clientY: number): [number, number] | null {
-    const r = this.canvas.getBoundingClientRect();
-    const ux = (clientX - r.left) / this.scale;
-    const uy = (clientY - r.top) / this.scale;
-    const col = Math.floor((ux - BOARD_X) / CELL);
-    if (col < -1 || col > BOARD_WIDTH) return null;
-    const row = VISIBLE_HEIGHT - 1 - Math.floor((uy - BOARD_Y) / CELL);
-    if (row < -2) return null;
-    return [Math.max(0, Math.min(BOARD_WIDTH - 1, col)), Math.max(0, Math.min(VISIBLE_HEIGHT - 1, row))];
-  }
-
   /** How wide one cell of your board is on screen, in CSS pixels. */
   get cellPx(): number {
     return CELL * this.scale;

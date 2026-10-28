@@ -8,6 +8,18 @@ export interface TapPreview {
   cells: [number, number][];
 }
 
+/** Less movement than this is a tap. */
+const TAP_SLOP_PX = 12;
+/** A tap or a drop swipe is over within this time. */
+const SWIPE_MAX_MS = 350;
+/** How far down a swipe goes to drop the piece. */
+const DROP_SWIPE_PX = 60;
+
+/** Finger travel per board column: about a twelfth of the screen, so a thumb can sweep the whole board. */
+function columnPx(): number {
+  return Math.max(24, innerWidth / 12);
+}
+
 function cellsOf(p: Placement): [number, number][] {
   return PIECE_CELLS[p.type][p.rot].map(([dx, dy]) => [p.x + dx, p.y + dy]);
 }
@@ -23,8 +35,9 @@ function centerX(p: Placement): number {
 }
 
 /**
- * Tap to place: touch or drag on the board and an outline shows where the
- * piece will go; the drop button puts it there. The rotate buttons turn
+ * Tap to place: an outline shows where the piece will go. Drag a thumb
+ * sideways anywhere to move it, tap to turn it, swipe down or press the drop
+ * button to put the piece there. The rotate buttons turn
  * the shown spot, Hold swaps the piece. Placements come from the bot's move
  * search, limited to ones reached without soft drop so any handling works,
  * and are played as ordinary key taps.
@@ -45,24 +58,40 @@ export class TapControls {
 
   constructor(
     parent: HTMLElement,
-    /** Board cell under a screen point, or null when it's off your board. */
-    private cellAt: (clientX: number, clientY: number) => [number, number] | null,
     private press: (key: Key) => void,
   ) {
     this.layer = document.createElement('div');
     this.layer.className = 'swipe hidden';
-    // Touching or dragging over the board moves the outline; only the drop button drops.
-    let steering: number | null = null;
+    // One thumb anywhere on the screen: drag sideways moves the outline, a tap turns it,
+    // a quick swipe down drops. The drop button does the same as the swipe.
+    let finger: { id: number; x: number; y: number; at: number; center: number; moved: boolean } | null = null;
     this.layer.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      steering = e.pointerId;
+      if (finger || !this.preview) return;
       this.layer.setPointerCapture?.(e.pointerId);
-      this.aimAt(e.clientX, e.clientY);
+      finger = { id: e.pointerId, x: e.clientX, y: e.clientY, at: e.timeStamp, center: centerX(this.preview), moved: false };
     }, { passive: false });
     this.layer.addEventListener('pointermove', (e) => {
-      if (e.pointerId === steering) this.aimAt(e.clientX, e.clientY);
+      if (!finger || e.pointerId !== finger.id || !this.preview) return;
+      const dx = e.clientX - finger.x;
+      const dy = e.clientY - finger.y;
+      if (Math.hypot(dx, dy) > TAP_SLOP_PX) finger.moved = true;
+      // Mostly downward is a drop swipe, not a move.
+      if (dy > Math.abs(dx) * 1.5) return;
+      const cols = Math.round(dx / columnPx());
+      this.preview = this.nearest(this.preview.rot, finger.center + cols) ?? this.preview;
     });
-    for (const type of ['pointerup', 'pointercancel'] as const) this.layer.addEventListener(type, () => (steering = null));
+    this.layer.addEventListener('pointerup', (e) => {
+      const f = finger;
+      if (!f || e.pointerId !== f.id) return;
+      finger = null;
+      const dx = e.clientX - f.x;
+      const dy = e.clientY - f.y;
+      const quick = e.timeStamp - f.at < SWIPE_MAX_MS;
+      if (!f.moved && quick) return this.turn(1);
+      if (quick && dy > DROP_SWIPE_PX && dy > Math.abs(dx) * 1.5) this.drop();
+    });
+    this.layer.addEventListener('pointercancel', () => (finger = null));
     this.layer.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.bar = document.createElement('div');
@@ -151,15 +180,6 @@ export class TapControls {
       }
     }
     return best;
-  }
-
-  /** Moves the outline to the column under the finger, keeping its rotation. */
-  private aimAt(clientX: number, clientY: number): void {
-    const cell = this.cellAt(clientX, clientY);
-    if (!cell || !this.game?.active) return;
-    const rot = this.preview?.rot ?? this.game.active.rot;
-    // The spot in this rotation centred on the column as near as it can be.
-    this.preview = this.nearest(rot, cell[0]) ?? this.preview;
   }
 
   /** Turns the shown spot, keeping it near the same column; shapes that repeat are skipped. */

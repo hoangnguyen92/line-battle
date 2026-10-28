@@ -950,7 +950,6 @@ const swipe = new SwipeControls(
 );
 const tap = new TapControls(
   $('app'),
-  (x, y) => renderer.cellAt(x, y),
   (key) => {
     sound.unlock();
     actionSound(key);
@@ -1078,7 +1077,7 @@ function syncSettingsForm(): void {
   $('touch-style-help').textContent = touchStyle === 'swipe'
     ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
     : touchStyle === 'tap'
-      ? t('Tap: touch or drag on the board to move the outline, ↻ and ↺ turn it, ⤓ drops the piece there.')
+      ? t('Tap: drag sideways anywhere to move the outline, tap to turn it, swipe down or press ⤓ to drop.')
       : '';
   // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
   const swiping = touchActive() && touchStyle !== 'buttons';
