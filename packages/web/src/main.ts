@@ -59,6 +59,7 @@ import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
 import { TapControls } from './tap';
+import { GestureGuard, inAppNote } from './gestures';
 import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchCode, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
@@ -221,11 +222,13 @@ function refreshTouchPad(): void {
   const on = touchActive() && inGameScreen(screen) && mode !== 'versus';
   swipe.setVisible(on && touchStyle === 'swipe');
   touchPad.setVisible(on && touchStyle === 'buttons');
+  simplePad.setVisible(on && touchStyle === 'simple');
   tap.setVisible(on && touchStyle === 'tap');
+  gestures.setPlaying(on);
   if (!tap.visible) renderer.setTapPreview(null);
   $('touch-back').classList.toggle('hidden', !on);
   const app = $('app');
-  const bar = touchPad.visible ? touchPad.root : tap.visible ? tap.bar : null;
+  const bar = touchPad.visible ? touchPad.root : simplePad.visible ? simplePad.root : tap.visible ? tap.bar : null;
   if (!bar) {
     app.style.paddingBottom = '';
     return renderer.setReserved(0, 0);
@@ -322,6 +325,7 @@ function startCountdown(): void {
 function startTutorial(): void {
   setMode('tutorial');
   tutorial = new Tutorial();
+  tutorial.oneWayRotate = touchActive() && touchStyle === 'simple';
   game = tutorial.game;
   recorder = null;
   popup = null;
@@ -383,8 +387,8 @@ function startRound(): void {
   // Both players get the same pieces; a fresh seed each round.
   const first = mode === 'bot' ? activeHandling() : handling;
   const second = mode === 'bot' ? BOT_HANDLING : handling;
-  // Tapping to place against a bot, your piece waits at the top until you drop it.
-  const waits = mode === 'bot' && touchActive() && touchStyle === 'tap';
+  // On a phone against a bot (tap or simple buttons), your piece waits at the top until you drop it.
+  const waits = mode === 'bot' && touchActive() && (touchStyle === 'tap' || touchStyle === 'simple');
   const mine: Partial<GameConfig> = waits ? { handling: { ...first }, gravity: 0 } : { handling: { ...first } };
   const config: MatchConfig = { seed: randomSeed(), players: [mine, { handling: { ...second } }] };
   bot?.reset();
@@ -729,6 +733,7 @@ function stepTutorial(): void {
   if (game.over) {
     const lesson = tutorial.lesson;
     tutorial = new Tutorial(lesson);
+    tutorial.oneWayRotate = touchActive() && touchStyle === 'simple';
     game = tutorial.game;
     refreshTutorialTip();
   }
@@ -926,6 +931,7 @@ addEventListener('keyup', (e) => {
 addEventListener('blur', () => {
   allKeyboards.forEach((k) => k.releaseAll());
   touchPad.releaseAll();
+  simplePad.releaseAll();
   swipe.cancel();
 });
 
@@ -938,6 +944,16 @@ const touchPad = new TouchPad(
     soloKeys.keyDown(code);
   },
   (code) => soloKeys.keyUp(code),
+);
+const simplePad = new TouchPad(
+  $('app'),
+  (code, key) => {
+    sound.unlock();
+    actionSound(key);
+    soloKeys.keyDown(code);
+  },
+  (code) => soloKeys.keyUp(code),
+  true,
 );
 const swipe = new SwipeControls(
   $('app'),
@@ -958,6 +974,9 @@ const tap = new TapControls(
   },
 );
 $('touch-back').addEventListener('click', back);
+const gestures = new GestureGuard();
+const inApp = inAppNote();
+if (inApp) $('play-now').after(inApp);
 addEventListener('resize', refreshTouchPad);
 
 // ---- menu and settings ----------------------------------------------------
@@ -1078,9 +1097,11 @@ function syncSettingsForm(): void {
     ? t('Swipe: drag sideways to move, tap to rotate (right side clockwise), drag down to drop faster, flick down to drop, flick up to hold.')
     : touchStyle === 'tap'
       ? t('Tap: drag sideways anywhere to move the outline, tap to turn it, swipe down or press ⤓ to drop.')
-      : '';
+      : touchStyle === 'simple'
+        ? t('Simple: four big buttons. ◀ ▶ move (keep a finger on one to slide), ↻ turns, ⤓ drops, HOLD keeps a piece for later.')
+        : '';
   // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
-  const swiping = touchActive() && touchStyle !== 'buttons';
+  const swiping = touchActive() && touchStyle !== 'buttons' && touchStyle !== 'simple';
   $('das-field').classList.toggle('hidden', swiping);
   $('arr-field').classList.toggle('hidden', swiping);
   swipeInput.value = String(swipeSensitivity);
@@ -1109,8 +1130,8 @@ for (const option of ['auto', 'on', 'off'] as const) {
   $('touch-mode').append(b);
 }
 
-const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { tap: 'Tap', swipe: 'Swipe', buttons: 'Buttons' };
-for (const style of ['tap', 'swipe', 'buttons'] as const) {
+const TOUCH_STYLE_NAMES: Record<TouchStyle, string> = { simple: 'Simple', tap: 'Tap', swipe: 'Swipe', buttons: 'Buttons' };
+for (const style of ['simple', 'tap', 'swipe', 'buttons'] as const) {
   const b = document.createElement('button');
   b.dataset.style = style;
   b.textContent = t(TOUCH_STYLE_NAMES[style]);

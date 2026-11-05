@@ -324,3 +324,19 @@ body.touch canvas { touch-action: none; }
 .tapbar .touch-cluster { width: auto; }
 .tap-hint { grid-column: 1 / -1; margin: 0 0 2px; text-align: center; font-size: 14px; color: var(--text); opacity: 0.85; pointer-events: none; }
 .touchpad.sides .tap-hint { display: none; }
+/* While playing on a phone: the page never scrolls, bounces or pulls to refresh, so swipes stay in the game. */
+html.no-gestures, html.no-gestures body { overflow: hidden; overscroll-behavior: none; touch-action: none; }
+.inapp-note { margin: 4px 0 0; font-size: 14px; color: #ffd27d; text-align: center; }
+.inapp-note a { color: inherit; font-weight: 700; }
+/* Simple pad: four big buttons, a small Hold and the how-to line above them. */
+.simplepad { display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 210px); justify-content: space-between; row-gap: 8px; }
+.simplepad .touch-cluster { width: auto; }
+.simplepad .touch-cluster.right { grid-template-columns: 1fr 1.3fr; }
+.simplepad .touch-cluster .touch-btn { height: min(12vh, 92px); font-size: 34px; }
+.touch-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.touch-top .touch-btn.hold { height: 40px; min-height: 40px; padding: 0 16px; font-size: 14px; flex: none; }
+.touch-top .tap-hint { flex: 1; margin: 0; text-align: left; font-size: 13px; }
+.touchpad.sides.simplepad { display: flex; }
+.touchpad.sides .touch-top { position: absolute; bottom: 100%; left: max(10px, env(safe-area-inset-left)); }
+/* The hidden switch that gives iPhones a tap of haptic feedback. */
+.haptic { position: fixed; left: -100px; top: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
