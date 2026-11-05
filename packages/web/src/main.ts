@@ -59,6 +59,7 @@ import { Music } from './music';
 import { Sound } from './sound';
 import { Tutorial } from './tutorial';
 import { TapControls } from './tap';
+import { GestureGuard, inAppNote } from './gestures';
 import { isLandscape, isTouchDevice, setLabelStyle, SwipeControls, TouchPad, touchCode, touchKeyMap, type TouchMode, type TouchStyle } from './touch';
 import { language, LANGUAGE_NAMES, LANGUAGES, setLanguage, t, translatePage, type Language } from './i18n';
 import {
@@ -222,6 +223,7 @@ function refreshTouchPad(): void {
   swipe.setVisible(on && touchStyle === 'swipe');
   touchPad.setVisible(on && touchStyle === 'buttons');
   tap.setVisible(on && touchStyle === 'tap');
+  gestures.setPlaying(on);
   if (!tap.visible) renderer.setTapPreview(null);
   $('touch-back').classList.toggle('hidden', !on);
   const app = $('app');
@@ -958,6 +960,9 @@ const tap = new TapControls(
   },
 );
 $('touch-back').addEventListener('click', back);
+const gestures = new GestureGuard();
+const inApp = inAppNote();
+if (inApp) $('play-now').after(inApp);
 addEventListener('resize', refreshTouchPad);
 
 // ---- menu and settings ----------------------------------------------------

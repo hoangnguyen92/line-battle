@@ -324,3 +324,7 @@ body.touch canvas { touch-action: none; }
 .tapbar .touch-cluster { width: auto; }
 .tap-hint { grid-column: 1 / -1; margin: 0 0 2px; text-align: center; font-size: 14px; color: var(--text); opacity: 0.85; pointer-events: none; }
 .touchpad.sides .tap-hint { display: none; }
+/* While playing on a phone: the page never scrolls, bounces or pulls to refresh, so swipes stay in the game. */
+html.no-gestures, html.no-gestures body { overflow: hidden; overscroll-behavior: none; touch-action: none; }
+.inapp-note { margin: 4px 0 0; font-size: 14px; color: #ffd27d; text-align: center; }
+.inapp-note a { color: inherit; font-weight: 700; }
