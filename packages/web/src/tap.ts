@@ -1,6 +1,7 @@
 import { BotBoard, findPlacements, type Placement } from '@line-battle/bot';
 import { PIECE_CELLS, type Game, type Key, type PieceType } from '@line-battle/engine';
 import { t } from './i18n';
+import { haptic } from './touch';
 
 /** A spot picked for the piece, as board cells (x, y up from the bottom row). */
 export interface TapPreview {
@@ -157,6 +158,7 @@ export class TapControls {
         b.addEventListener('pointerdown', (e) => {
           e.preventDefault();
           b.classList.add('pressed');
+          haptic();
           act();
         }, { passive: false });
         for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) b.addEventListener(type, () => b.classList.remove('pressed'));

@@ -22,6 +22,39 @@ export function isLandscape(): boolean {
   return innerWidth > innerHeight * 1.25;
 }
 
+let hapticLabel: HTMLLabelElement | null = null;
+
+/**
+ * A light buzz for a button press. Android browsers vibrate; iPhones have no
+ * vibrate, but since iOS 18 toggling a switch checkbox gives a light tap, so a
+ * hidden one is clicked instead. Elsewhere nothing happens.
+ */
+export function haptic(): void {
+  try {
+    if (typeof navigator.vibrate === 'function') {
+      navigator.vibrate(10);
+      return;
+    }
+    if (!hapticLabel) {
+      const box = document.createElement('div');
+      box.className = 'haptic';
+      box.setAttribute('aria-hidden', 'true');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = 'haptic-switch';
+      input.setAttribute('switch', '');
+      input.tabIndex = -1;
+      hapticLabel = document.createElement('label');
+      hapticLabel.htmlFor = input.id;
+      box.append(input, hapticLabel);
+      document.body.append(box);
+    }
+    hapticLabel.click();
+  } catch {
+    /* no buzz on this phone */
+  }
+}
+
 interface ButtonSpec {
   key: Key;
   icon: string;
@@ -43,6 +76,10 @@ const RIGHT: ButtonSpec[] = [
   { key: 'rotate180', icon: '180', label: 'Rotate 180' },
   { key: 'hardDrop', icon: '⤓', label: 'Hard drop' },
 ];
+
+/** The simple pad: four big buttons, and a small Hold above them. */
+const SIMPLE_LEFT: ButtonSpec[] = [LEFT[2], LEFT[3]];
+const SIMPLE_RIGHT: ButtonSpec[] = [RIGHT[1], RIGHT[3]];
 
 const SWIPE_LABELS: Record<Key, string> = {
   left: 'drag left',
@@ -79,7 +116,7 @@ export function touchLabel(code: string): string | undefined {
   if (!spec) return undefined;
   if (labelStyle === 'swipe') return t(SWIPE_LABELS[spec.key]);
   if (labelStyle === 'tap') return t(TAP_LABELS[spec.key]);
-  return spec.icon;
+  return spec.key === 'hold' ? t('Hold').toUpperCase() : spec.icon;
 }
 
 /** A key map of the touch buttons alone, so text about keys names the buttons instead. */
@@ -100,26 +137,34 @@ export class TouchPad {
   /** How many fingers are on each button, so lifting one of two keeps it held. */
   private held = new Map<Key, number>();
 
+  /** The how-to line on the simple pad. */
+  readonly hint: HTMLElement | null = null;
+
+  /** `simple`: just ◀ ▶ ↻ ⤓ as big buttons, with a small Hold and a how-to line above. */
   constructor(
     parent: HTMLElement,
     private down: (code: string, key: Key) => void,
     private up: (code: string) => void,
+    simple = false,
   ) {
     this.root = document.createElement('div');
-    this.root.id = 'touchpad';
-    this.root.className = 'touchpad hidden';
-    for (const [side, specs] of [['left', LEFT], ['right', RIGHT]] as const) {
+    this.root.className = simple ? 'touchpad simplepad hidden' : 'touchpad hidden';
+    if (!simple) this.root.id = 'touchpad';
+    if (simple) {
+      const top = document.createElement('div');
+      top.className = 'touch-top';
+      top.append(this.button({ key: 'hold', icon: t('Hold').toUpperCase(), label: 'Hold' }));
+      this.hint = document.createElement('p');
+      this.hint.className = 'tap-hint';
+      this.hint.textContent = t('◀ ▶ move (hold to slide) · ↻ turn · ⤓ drop');
+      top.append(this.hint);
+      this.root.append(top);
+    }
+    const sides = simple ? [['left', SIMPLE_LEFT], ['right', SIMPLE_RIGHT]] as const : [['left', LEFT], ['right', RIGHT]] as const;
+    for (const [side, specs] of sides) {
       const cluster = document.createElement('div');
       cluster.className = `touch-cluster ${side}`;
-      for (const s of specs) {
-        const b = document.createElement('div');
-        b.className = `touch-btn ${s.key}`;
-        b.textContent = s.icon;
-        b.setAttribute('role', 'button');
-        b.setAttribute('aria-label', t(s.label));
-        this.buttons.set(b, s.key);
-        cluster.append(b);
-      }
+      for (const s of specs) cluster.append(this.button(s));
       this.root.append(cluster);
     }
     parent.append(this.root);
@@ -132,6 +177,16 @@ export class TouchPad {
     }
     // No long-press menu, text selection or double-tap zoom on the buttons.
     this.root.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  private button(s: ButtonSpec): HTMLElement {
+    const b = document.createElement('div');
+    b.className = `touch-btn ${s.key}`;
+    b.textContent = s.icon;
+    b.setAttribute('role', 'button');
+    b.setAttribute('aria-label', t(s.label));
+    this.buttons.set(b, s.key);
+    return b;
   }
 
   get visible(): boolean {
@@ -173,11 +228,7 @@ export class TouchPad {
     this.held.set(key, n + 1);
     if (n > 0) return;
     this.buttonFor(key)?.classList.add('pressed');
-    try {
-      navigator.vibrate?.(8);
-    } catch {
-      /* no buzz on this phone */
-    }
+    haptic();
     this.down(touchCode(key), key);
   }
 
@@ -195,8 +246,8 @@ export class TouchPad {
   }
 }
 
-/** 'tap': tap where the piece should go (see tap.ts). */
-export type TouchStyle = 'tap' | 'swipe' | 'buttons';
+/** 'simple': four big buttons, no swipes. 'tap': drag an outline to where the piece should go (see tap.ts). */
+export type TouchStyle = 'simple' | 'tap' | 'swipe' | 'buttons';
 
 /** Below this a finger hasn't really moved: a tap, not a drag. */
 const TAP_SLOP_PX = 12;

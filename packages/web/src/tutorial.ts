@@ -12,10 +12,12 @@ interface Lesson {
   swipe?: string;
   /** And for tap to place. */
   tap?: string;
+  /** And for the four-button pad. */
+  simple?: string;
   /** Sets the board up for this lesson, if it needs a particular one. */
   setup?(game: Game): void;
   /** Keys pressed and events seen so far in this lesson; true when it's done. */
-  done(pressed: Set<Key>, events: GameEvent[]): boolean;
+  done(pressed: Set<Key>, events: GameEvent[], oneWay: boolean): boolean;
   /** True when the board can no longer be solved, so it's set up again. */
   stuck?(game: Game): boolean;
 }
@@ -42,6 +44,7 @@ const LESSONS: Lesson[] = [
     text: (k) => t('Move the falling piece left and right with {left} and {right}.', { left: keysText(k.left), right: keysText(k.right) }),
     swipe: 'Drag your finger left and right anywhere on the screen: the piece follows it.',
     tap: 'Drag your thumb left and right anywhere on the screen to move the bright outline, then swipe down (or press ⤓) to drop the piece there. Put one on the left and one on the right.',
+    simple: 'Press ◀ and ▶ to move the piece. Keep a finger on one to slide it all the way.',
     done: (p) => p.has('left') && p.has('right'),
   },
   {
@@ -49,13 +52,15 @@ const LESSONS: Lesson[] = [
     text: (k) => t('Turn it clockwise with {cw}, and the other way with {ccw}.', { cw: keysText(k.rotateCW), ccw: keysText(k.rotateCCW) }),
     swipe: 'Tap the right side of the screen to turn it clockwise, and the left side to turn it the other way.',
     tap: 'Tap the screen to turn the outline (↺ turns it the other way), then drop the piece. Try both directions.',
-    done: (p) => p.has('rotateCW') && p.has('rotateCCW'),
+    simple: 'Press ↻ to turn the piece. Keep pressing to see every side.',
+    done: (p, _ev, oneWay) => p.has('rotateCW') && (oneWay || p.has('rotateCCW')),
   },
   {
     title: 'Drop',
     text: (k) => t('Hold {soft} to drop faster, or press {hard} to drop it all the way at once.', { soft: keysText(k.softDrop), hard: keysText(k.hardDrop) }),
     swipe: 'Drag down slowly to drop faster, or flick down quickly to drop it all the way at once.',
     tap: 'Swipe down, or press ⤓, to drop the piece where the outline is.',
+    simple: 'Press ⤓ to drop the piece all the way down.',
     done: (p, ev) => p.has('hardDrop') && ev.some((e) => e.type === 'lock'),
   },
   {
@@ -90,6 +95,8 @@ export class Tutorial {
   lesson = 0;
   private pressed = new Set<Key>();
   private seen: GameEvent[] = [];
+  /** Only one rotate button (the simple pad), so the rotate lesson asks for one way. */
+  oneWayRotate = false;
 
   /** `start` picks up at a later lesson, e.g. after topping out. */
   constructor(start = 0) {
@@ -111,12 +118,12 @@ export class Tutorial {
     return t(this.finished ? 'Ready for a match' : LESSONS[this.lesson].title);
   }
 
-  text(keys: KeyMap, touch?: 'swipe' | 'tap'): string {
+  text(keys: KeyMap, touch?: 'swipe' | 'tap' | 'simple'): string {
     if (this.finished) {
       return t('In a match, every clear sends garbage to your opponent, and bigger clears, combos and T-spins send more. Your clears cancel garbage coming at you first. Top out and you lose the round.');
     }
     const lesson = LESSONS[this.lesson];
-    const special = touch === 'swipe' ? lesson.swipe : touch === 'tap' ? lesson.tap : undefined;
+    const special = touch === 'swipe' ? lesson.swipe : touch === 'tap' ? lesson.tap : touch === 'simple' ? lesson.simple : undefined;
     return special ? t(special) : lesson.text(keys);
   }
 
@@ -129,7 +136,7 @@ export class Tutorial {
     const lesson = LESSONS[this.lesson];
     for (const k of presses) this.pressed.add(k);
     this.seen.push(...events);
-    if (!lesson.done(this.pressed, this.seen)) {
+    if (!lesson.done(this.pressed, this.seen, this.oneWayRotate)) {
       if (!events.some((e) => e.type === 'lock') || !lesson.stuck?.(this.game)) return null;
       lesson.setup?.(this.game);
       return 'retry';
