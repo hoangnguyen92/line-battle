@@ -1005,7 +1005,6 @@ $('tile-bot').addEventListener('click', () => $('start-bot').click());
 $('tile-ranked').addEventListener('click', () => $('online-ranked').click());
 $('play-friend').addEventListener('click', () => startOnline({ kind: 'create' }));
 $('hero-tutorial').addEventListener('click', startTutorial);
-$('start-versus').addEventListener('click', startVersus);
 $('start-bot').addEventListener('click', () => startBotMatch(botLevel, false));
 $('start-gauntlet').addEventListener('click', () => startBotMatch(1, true));
 const levelButtons = $('bot-levels');
@@ -1159,7 +1158,6 @@ swipeInput.addEventListener('input', () => {
 
 /** Two players can't share one phone screen, so touch players don't see local versus. */
 function refreshTouchMenu(): void {
-  $('start-versus').classList.toggle('hidden', touchActive());
   document.body.classList.toggle('touch', touchActive());
 }
 refreshTouchMenu();
