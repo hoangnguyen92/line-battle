@@ -39,15 +39,18 @@
         <div class="hero">
           <button id="play-now" class="primary play-now">Play now</button>
           <p class="hero-note">Free 1v1 against a bot. No sign-up, no download.</p>
-          <div class="hero-more">
-            <button id="play-online">Play online</button>
-            <button id="play-friend">Play with a friend</button>
+          <div class="mode-grid">
+            <button id="tile-sprint" class="tile"><span class="tile-ic" aria-hidden="true">🏁</span><span class="tile-name">40 Lines Sprint</span><span id="tile-sprint-sub" class="tile-sub"></span></button>
+            <button id="tile-bot" class="tile"><span class="tile-ic" aria-hidden="true">🤖</span><span class="tile-name">Versus bot</span><span id="tile-bot-sub" class="tile-sub"></span></button>
+            <button id="tile-ranked" class="tile"><span class="tile-ic" aria-hidden="true">🏆</span><span class="tile-name">Ranked</span><span id="tile-ranked-sub" class="tile-sub"></span></button>
+            <button id="play-online" class="tile"><span class="tile-ic" aria-hidden="true">⚡</span><span class="tile-name">Quick match</span><span class="tile-sub">Real players online</span></button>
           </div>
+          <button id="play-friend" class="friend"><span aria-hidden="true">👥</span> Play with a friend</button>
           <button id="hero-tutorial" class="link">New here? How to play</button>
         </div>
 
         <details id="more-modes" class="more-modes">
-          <summary>More modes</summary>
+          <summary><span class="mm-text"><span class="mm-title">Options</span><span class="mm-sub">Bot level, gauntlet, room code, 2 players on one device</span></span><span class="mm-chev" aria-hidden="true">⌄</span></summary>
         <div class="modes">
           <div class="card">
             <h3>Solo and local</h3>
@@ -87,10 +90,10 @@
         </details>
 
         <nav class="menu-foot">
-          <button id="open-customize" class="link">Character, skins and shop</button>
-          <button id="open-controls" class="link">Controls</button>
-          <button id="open-settings" class="link">Handling</button>
-          <button id="open-sound" class="link">Sound</button>
+          <button id="open-customize" class="link"><span class="ic" aria-hidden="true">🎨</span>Character, skins and shop</button>
+          <button id="open-controls" class="link"><span class="ic" aria-hidden="true">⌨️</span>Controls</button>
+          <button id="open-settings" class="link"><span class="ic" aria-hidden="true">🎚️</span>Handling</button>
+          <button id="open-sound" class="link"><span class="ic" aria-hidden="true">🔊</span>Sound</button>
           <select id="language" aria-label="Language" title="Language"></select>
         </nav>
 
