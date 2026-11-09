@@ -256,6 +256,7 @@ function inGameScreen(s: Screen): boolean {
 function refreshBest(): void {
   const best = loadBestTicks();
   $('best').textContent = best ? formatTime(best) : t('none yet');
+  $('tile-sprint-sub').textContent = best ? t('Best {time}', { time: formatTime(best) }) : t('Beat your best time');
   refreshBotMenu();
 }
 
@@ -311,6 +312,7 @@ function refreshBotMenu(): void {
   document.querySelectorAll<HTMLButtonElement>('#bot-levels button').forEach((b) => {
     b.classList.toggle('selected', Number(b.dataset.level) === botLevel);
   });
+  $('tile-bot-sub').textContent = t('Level {n} · {name}', { n: botLevel, name: t(LEVELS[botLevel].name) });
   const beaten = loadGauntletBest();
   $('gauntlet-best').textContent = beaten === 5 ? t('all 5 bots beaten') : beaten > 0 ? t('{n} of 5 bots beaten', { n: beaten }) : t('not started');
 }
@@ -997,9 +999,12 @@ $('tutorial-bot').addEventListener('click', () => {
 // On a phone, Play now starts against the easiest bot.
 $('play-now').addEventListener('click', () => startBotMatch(touchActive() ? 1 : botLevel, false));
 $('play-online').addEventListener('click', () => startOnline({ kind: 'quick' }));
+// The mode tiles under Play now do what the same buttons in Options do.
+$('tile-sprint').addEventListener('click', () => $('start').click());
+$('tile-bot').addEventListener('click', () => $('start-bot').click());
+$('tile-ranked').addEventListener('click', () => $('online-ranked').click());
 $('play-friend').addEventListener('click', () => startOnline({ kind: 'create' }));
 $('hero-tutorial').addEventListener('click', startTutorial);
-$('start-versus').addEventListener('click', startVersus);
 $('start-bot').addEventListener('click', () => startBotMatch(botLevel, false));
 $('start-gauntlet').addEventListener('click', () => startBotMatch(1, true));
 const levelButtons = $('bot-levels');
@@ -1153,7 +1158,6 @@ swipeInput.addEventListener('input', () => {
 
 /** Two players can't share one phone screen, so touch players don't see local versus. */
 function refreshTouchMenu(): void {
-  $('start-versus').classList.toggle('hidden', touchActive());
   document.body.classList.toggle('touch', touchActive());
 }
 refreshTouchMenu();
@@ -1203,6 +1207,7 @@ function refreshAccountBar(): void {
   } else {
     status.textContent = t('Playing as a guest');
   }
+  $('tile-ranked-sub').textContent = me ? t('Rating {rating}', { rating: me.rating.rating }) : t('Needs an account');
   $('open-account').classList.toggle('hidden', !!me);
   $('open-profile').classList.toggle('hidden', !me);
   $('log-out').classList.toggle('hidden', !me);
