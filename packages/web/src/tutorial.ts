@@ -60,7 +60,7 @@ const LESSONS: Lesson[] = [
     text: (k) => t('Hold {soft} to drop faster, or press {hard} to drop it all the way at once.', { soft: keysText(k.softDrop), hard: keysText(k.hardDrop) }),
     swipe: 'Drag down slowly to drop faster, or flick down quickly to drop it all the way at once.',
     tap: 'Swipe down, or press ⤓, to drop the piece where the outline is.',
-    simple: 'Press ⤓ to drop the piece all the way down.',
+    simple: 'Hold ▼ to drop slowly, or press ⤓ to drop it all the way at once.',
     done: (p, ev) => p.has('hardDrop') && ev.some((e) => e.type === 'lock'),
   },
   {
