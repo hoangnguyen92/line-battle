@@ -360,15 +360,28 @@ html.no-gestures, html.no-gestures body { overflow: hidden; overscroll-behavior:
 .inapp-note { margin: 4px 0 0; font-size: 14px; color: #ffd27d; text-align: center; }
 .inapp-note a { color: inherit; font-weight: 700; }
 /* Simple pad: four big buttons, a small Hold and the how-to line above them. */
-.simplepad { display: grid; grid-template-columns: minmax(0, 210px) minmax(0, 210px); justify-content: space-between; row-gap: 8px; }
-.simplepad .touch-cluster { width: auto; }
-.simplepad .touch-cluster.right { grid-template-columns: 1fr 1.3fr; }
-.simplepad .touch-cluster .touch-btn { height: min(12vh, 92px); font-size: 34px; }
-.touch-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
-.touch-top .touch-btn.hold { height: 40px; min-height: 40px; padding: 0 16px; font-size: 14px; flex: none; }
-.touch-top .tap-hint { flex: 1; margin: 0; text-align: left; font-size: 13px; }
+/* Laid out like an old Game Boy: a cross of ◀ ▼ ▶ on the left, round ↻ and ⤓ set apart on the right. */
+.simplepad { display: grid; grid-template-columns: auto auto; justify-content: space-between; row-gap: 4px; }
+.simplepad .touch-cluster {
+  --btn: min(13.5vw, 68px);
+  width: auto;
+  grid-template-columns: repeat(3, var(--btn));
+  grid-template-rows: repeat(2, var(--btn));
+  gap: 4px 10px;
+  justify-content: center;
+}
+.simplepad .touch-cluster .touch-btn { width: var(--btn); height: var(--btn); min-height: 0; font-size: 28px; }
+.simplepad .touch-cluster .touch-btn.left { grid-area: 1 / 1; }
+.simplepad .touch-cluster .touch-btn.right { grid-area: 1 / 3; }
+.simplepad .touch-cluster .touch-btn.softDrop { grid-area: 2 / 2; }
+.simplepad .touch-cluster.right .touch-btn { border-radius: 50%; }
+.simplepad .touch-cluster .touch-btn.rotateCW { grid-area: 1 / 3; }
+.simplepad .touch-cluster .touch-btn.hardDrop { grid-area: 2 / 2; }
+.simplepad .touch-cluster .touch-btn.hold { grid-area: 1 / 1; transform: scale(0.8); font-size: 13px; }
+.simplepad .touch-cluster .touch-btn.hold.pressed { transform: scale(0.76); }
+.simplepad .tap-hint { grid-column: 1 / -1; margin: 0; text-align: center; font-size: 12px; }
 .touchpad.sides.simplepad { display: flex; }
-.touchpad.sides .touch-top { position: absolute; bottom: 100%; left: max(10px, env(safe-area-inset-left)); }
+.touchpad.sides.simplepad .touch-cluster { width: auto; --btn: min(10vh, 64px); }
 /* The hidden switch that gives iPhones a tap of haptic feedback. */
 .haptic { position: fixed; left: -100px; top: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 @media (max-width: 420px) {

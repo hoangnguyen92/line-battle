@@ -77,9 +77,9 @@ const RIGHT: ButtonSpec[] = [
   { key: 'hardDrop', icon: '⤓', label: 'Hard drop' },
 ];
 
-/** The simple pad: four big buttons, and a small Hold above them. */
-const SIMPLE_LEFT: ButtonSpec[] = [LEFT[2], LEFT[3]];
-const SIMPLE_RIGHT: ButtonSpec[] = [RIGHT[1], RIGHT[3]];
+/** The simple pad: three big buttons a side, moves on the left and rotate, drop and hold on the right. */
+const SIMPLE_LEFT: ButtonSpec[] = [LEFT[2], LEFT[3], LEFT[1]];
+const SIMPLE_RIGHT: ButtonSpec[] = [RIGHT[1], RIGHT[3], LEFT[0]];
 
 const SWIPE_LABELS: Record<Key, string> = {
   left: 'drag left',
@@ -151,20 +151,16 @@ export class TouchPad {
     this.root.className = simple ? 'touchpad simplepad hidden' : 'touchpad hidden';
     if (!simple) this.root.id = 'touchpad';
     if (simple) {
-      const top = document.createElement('div');
-      top.className = 'touch-top';
-      top.append(this.button({ key: 'hold', icon: t('Hold').toUpperCase(), label: 'Hold' }));
       this.hint = document.createElement('p');
       this.hint.className = 'tap-hint';
-      this.hint.textContent = t('◀ ▶ move (hold to slide) · ↻ turn · ⤓ drop');
-      top.append(this.hint);
-      this.root.append(top);
+      this.hint.textContent = t('◀ ▶ move · ▼ down slowly · ↻ turn · ⤓ drop · HOLD keeps a piece');
+      this.root.append(this.hint);
     }
     const sides = simple ? [['left', SIMPLE_LEFT], ['right', SIMPLE_RIGHT]] as const : [['left', LEFT], ['right', RIGHT]] as const;
     for (const [side, specs] of sides) {
       const cluster = document.createElement('div');
       cluster.className = `touch-cluster ${side}`;
-      for (const s of specs) cluster.append(this.button(s));
+      for (const s of specs) cluster.append(this.button(s.key === 'hold' ? { ...s, icon: t('Hold').toUpperCase() } : s));
       this.root.append(cluster);
     }
     parent.append(this.root);
@@ -246,7 +242,7 @@ export class TouchPad {
   }
 }
 
-/** 'simple': four big buttons, no swipes. 'tap': drag an outline to where the piece should go (see tap.ts). */
+/** 'simple': six big buttons, no swipes. 'tap': drag an outline to where the piece should go (see tap.ts). */
 export type TouchStyle = 'simple' | 'tap' | 'swipe' | 'buttons';
 
 /** Below this a finger hasn't really moved: a tap, not a drag. */

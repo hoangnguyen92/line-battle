@@ -1103,7 +1103,7 @@ function syncSettingsForm(): void {
     : touchStyle === 'tap'
       ? t('Tap: drag sideways anywhere to move the outline, tap to turn it, swipe down or press ⤓ to drop.')
       : touchStyle === 'simple'
-        ? t('Simple: four big buttons. ◀ ▶ move (keep a finger on one to slide), ↻ turns, ⤓ drops, HOLD keeps a piece for later.')
+        ? t('Simple: left thumb ◀ ▶ move (keep a finger on one to slide) and ▼ drops slowly; right thumb ↻ turns, ⤓ drops at once, HOLD keeps a piece for later.')
         : '';
   // Swiping taps a cell at a time, so auto shift only matters for the buttons and keys.
   const swiping = touchActive() && touchStyle !== 'buttons' && touchStyle !== 'simple';
